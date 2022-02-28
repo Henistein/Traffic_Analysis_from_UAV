@@ -12,10 +12,6 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
 
     layers, save, c2 = [], [], ch[-1]  # layers, savelist, ch out
     for i, (f, n, m, args) in enumerate(d['backbone'] + d['head']):  # from, number, module, args
-        """
-        print(f'f = {f}\nn = {n}\nm = {m}\nargs = {args}')
-        break
-        """
         m = eval(m) if isinstance(m, str) else m  # eval strings
         for j, a in enumerate(args):
             try:
@@ -24,28 +20,19 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
                 pass
 
         n = n_ = max(round(n * gd), 1) if n > 1 else n  # depth gain
-        if m in [Conv, GhostConv, Bottleneck, GhostBottleneck, SPP, SPPF, DWConv, MixConv2d, Focus, CrossConv,
-                 BottleneckCSP, C3, C3TR, C3SPP, C3Ghost]:
+        if m in [Conv, Bottleneck]:
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, 8)
 
             args = [c1, c2, *args[1:]]
-            if m in [BottleneckCSP, C3, C3TR, C3Ghost]:
-                args.insert(2, n)  # number of repeats
-                n = 1
-        elif m is nn.BatchNorm2d:
-            args = [ch[f]]
+            
         elif m is Concat:
             c2 = sum(ch[x] for x in f)
         elif m is Detect:
             args.append([ch[x] for x in f])
             if isinstance(args[1], int):  # number of anchors
                 args[1] = [list(range(args[1] * 2))] * len(f)
-        elif m is Contract:
-            c2 = ch[f] * args[0] ** 2
-        elif m is Expand:
-            c2 = ch[f] // args[0] ** 2
         else:
             c2 = ch[f]
 
@@ -66,7 +53,5 @@ if __name__ == "__main__":
   y = yaml.safe_load(open('cfg.yaml'))
   y['ch'] = 3
   model1, save1 = parse_model(deepcopy(y), ch=[3])
-  model2, save2 = parse_model(deepcopy(y), ch=[3])
 
   print(str(model1))
-
