@@ -41,14 +41,51 @@ weights = opt.weights
 # try:
 model = torch.load(weights)['model'].float()
 model.eval()
+
+def letterbox(im, new_shape=(640, 640), color=(114, 114, 114), auto=True, scaleFill=False, scaleup=True, stride=32):
+    # Resize and pad image while meeting stride-multiple constraints
+    shape = im.shape[:2]  # current shape [height, width]
+    if isinstance(new_shape, int):
+        new_shape = (new_shape, new_shape)
+
+    # Scale ratio (new / old)
+    r = min(new_shape[0] / shape[0], new_shape[1] / shape[1])
+    if not scaleup:  # only scale down, do not scale up (for better val mAP)
+        r = min(r, 1.0)
+
+    # Compute padding
+    ratio = r, r  # width, height ratios
+    new_unpad = int(round(shape[1] * r)), int(round(shape[0] * r))
+    dw, dh = new_shape[1] - new_unpad[0], new_shape[0] - new_unpad[1]  # wh padding
+    if auto:  # minimum rectangle
+        dw, dh = np.mod(dw, stride), np.mod(dh, stride)  # wh padding
+    elif scaleFill:  # stretch
+        dw, dh = 0.0, 0.0
+        new_unpad = (new_shape[1], new_shape[0])
+        ratio = new_shape[1] / shape[1], new_shape[0] / shape[0]  # width, height ratios
+
+    dw /= 2  # divide padding into 2 sides
+    dh /= 2
+
+    if shape[::-1] != new_unpad:  # resize
+        im = cv2.resize(im, new_unpad, interpolation=cv2.INTER_LINEAR)
+    top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
+    left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
+    im = cv2.copyMakeBorder(im, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)  # add border
+    return im, ratio, (dw, dh)
+
+
+
+
 # except:
 #     print('[ERROR] check the model')
 
 
-def image_loader(img,imsize):
+def image_loader(im,imsize):
     '''
     processes input image for inference 
     '''
+    """
     h, w = img.shape[:2]
     img = cv2.resize(img,(imsize,imsize))
     img = img[:, :, ::-1].transpose(2, 0, 1) 
@@ -57,7 +94,18 @@ def image_loader(img,imsize):
     img = img.float()
     img /= 255.0
     img = img.unsqueeze(0)
-    return img, h, w 
+    """
+    #h, w = im.shape[:2]
+    h, w = (640, 640)
+    im = letterbox(im, (640, 640), stride=32)[0]
+    im = im.transpose((2, 0, 1))[::-1]
+    im = np.ascontiguousarray(im)
+    im = torch.from_numpy(im)
+    im = im.float()
+    im /= 255.0
+    im = im.unsqueeze(0)
+    return im, h, w 
+
 
 
 def get_pred(img):
@@ -67,7 +115,10 @@ def get_pred(img):
     imsize = 640
     img, h, w = image_loader(img,imsize)
     pred = model(img)[0]
+    print(pred.shape)
+    print(pred)
     pred = non_max_suppression(pred, conf_thres=0.40, fast=True) # conf_thres is confidence thresold
+
     if pred[0] is not None:
         gain = imsize / max(h,w)
         pad = (imsize - w * gain) / 2, (imsize - h * gain) / 2  # wh padding
