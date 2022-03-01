@@ -85,18 +85,7 @@ def image_loader(im,imsize):
     '''
     processes input image for inference 
     '''
-    """
-    h, w = img.shape[:2]
-    img = cv2.resize(img,(imsize,imsize))
-    img = img[:, :, ::-1].transpose(2, 0, 1) 
-    img = np.ascontiguousarray(img)
-    img = torch.from_numpy(img)
-    img = img.float()
-    img /= 255.0
-    img = img.unsqueeze(0)
-    """
-    #h, w = im.shape[:2]
-    h, w = (640, 640)
+    h, w = im.shape[:2]
     im = letterbox(im, (640, 640), stride=32)[0]
     im = im.transpose((2, 0, 1))[::-1]
     im = np.ascontiguousarray(im)
@@ -104,8 +93,13 @@ def image_loader(im,imsize):
     im = im.float()
     im /= 255.0
     im = im.unsqueeze(0)
+
     return im, h, w 
 
+def yolobbox2bbox(x,y,w,h):
+    x1, y1 = x-w/2, y-h/2
+    x2, y2 = x+w/2, y+h/2
+    return x1, y1, x2, y2
 
 
 def get_pred(img):
@@ -115,24 +109,34 @@ def get_pred(img):
     imsize = 640
     img, h, w = image_loader(img,imsize)
     pred = model(img)[0]
+
     print(pred.shape)
     print(pred)
-    pred = non_max_suppression(pred, conf_thres=0.40, fast=True) # conf_thres is confidence thresold
+    pred = non_max_suppression(pred, conf_thres=0.40) # conf_thres is confidence thresold
+    print(pred[0])
 
     if pred[0] is not None:
-        gain = imsize / max(h,w)
-        pad = (imsize - w * gain) / 2, (imsize - h * gain) / 2  # wh padding
+        _, newH, newW = img[0].shape
+        gainH = newH / h
+        gainW = newW / w
+        pad = (newW - w * gainW) / 2, (newH - h * gainH) / 2  # wh padding
         pred = pred[0]
 
         pred[:, [0, 2]] -= pad[0]  # x padding
         pred[:, [1, 3]] -= pad[1]  # y padding
-        pred[:, :4] /= gain
+
+        pred[:, 0] /= gainW
+        pred[:, 1] /= gainH
+        pred[:, 2] /= gainW
+        pred[:, 3] /= gainH
+
         pred[:, 0].clamp_(0, w)  # x1
         pred[:, 1].clamp_(0, h)  # y1
         pred[:, 2].clamp_(0, w)  # x2
         pred[:, 3].clamp_(0, h)  # y2
 
         pred = pred.detach().numpy()
+    
 
     return pred
                 
@@ -143,6 +147,7 @@ image = cv2.imread(path)
 
 if image is not None:
     prediction = get_pred(image)
+    print(prediction)
 
     if prediction is not None:
         for pred in prediction:
