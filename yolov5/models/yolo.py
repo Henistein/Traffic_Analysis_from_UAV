@@ -10,6 +10,7 @@ torch.manual_seed(420)
 
 def parse_model(d, ch):  # model_dict, input_channels(3)
     anchors, nc, gd, gw = d['anchors'], d['nc'], d['depth_multiple'], d['width_multiple']
+    print('AQUI: ', anchors)
     na = (len(anchors[0]) // 2) # number of anchors
     no = na * (nc + 5)  # number of outputs = anchors * (classes + 5)
 

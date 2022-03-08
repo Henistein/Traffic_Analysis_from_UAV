@@ -1,7 +1,10 @@
 import torch
+import torch.nn as nn
 import cv2
 import numpy as np
-from utils import non_max_suppression
+from utils import non_max_suppression, xywh2xyxy
+from models.yolo import Model
+from metrics import ConfusionMatrix, box_iou
 import argparse
 
 
@@ -96,11 +99,31 @@ def image_loader(im,imsize):
 
     return im, h, w 
 
-def yolobbox2bbox(x,y,w,h):
-    x1, y1 = x-w/2, y-h/2
-    x2, y2 = x+w/2, y+h/2
-    return x1, y1, x2, y2
+def scale_coords(old_shape, new_shape, coords):
+  h, w = old_shape
+  newH, newW = new_shape
 
+  gainH = newH / h
+  gainW = newW / w
+  pad = (newW - w * gainW) / 2, (newH - h * gainH) / 2  # wh padding
+
+  coords[:, [0, 2]] -= pad[0]  # x padding
+  coords[:, [1, 3]] -= pad[1]  # y padding
+
+  coords[:, 0] /= gainW
+  coords[:, 1] /= gainH
+  coords[:, 2] /= gainW
+  coords[:, 3] /= gainH
+
+  coords[:, 0].clamp_(0, w)  # x1
+  coords[:, 1].clamp_(0, h)  # y1
+  coords[:, 2].clamp_(0, w)  # x2
+  coords[:, 3].clamp_(0, h)  # y2
+
+  coords = coords.detach().numpy()
+
+  return coords
+    
 
 def get_pred(img):
     '''
@@ -110,10 +133,7 @@ def get_pred(img):
     img, h, w = image_loader(img,imsize)
     pred = model(img)[0]
 
-    print(pred.shape)
-    print(pred)
     pred = non_max_suppression(pred, conf_thres=0.40) # conf_thres is confidence thresold
-    print(pred[0])
 
     if pred[0] is not None:
         _, newH, newW = img[0].shape
@@ -143,34 +163,169 @@ def get_pred(img):
 
 path = opt.image
 
-image = cv2.imread(path)
+def yolov5(img):
+  #image = cv2.imread(path)
+  image = img
 
-if image is not None:
-    prediction = get_pred(image)
-    print(prediction)
+  if image is not None:
+      prediction = get_pred(image)
 
-    if prediction is not None:
-        for pred in prediction:
+      if prediction is not None:
+          for pred in prediction:
 
-            x1 = int(pred[0])
-            y1 = int(pred[1])
-            x2 = int(pred[2])
-            y2 = int(pred[3])
+              x1 = int(pred[0])
+              y1 = int(pred[1])
+              x2 = int(pred[2])
+              y2 = int(pred[3])
 
-            start = (x1,y1)
-            end = (x2,y2)
+              start = (x1,y1)
+              end = (x2,y2)
 
-            pred_data = f'{label[pred[-1]]} {str(pred[-2]*100)[:5]}%'
-            print(pred_data)
-            color = (0,255,0)
-            image = cv2.rectangle(image, start, end, color)
-            image = cv2.putText(image, pred_data, (x1,y1+25), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2, cv2.LINE_AA) 
-        cv2.imwrite(opt.output_dir+'result.jpg', image)
+              pred_data = f'{label[pred[-1]]} {str(pred[-2]*100)[:5]}%'
+              print(pred_data)
+              color = (0,255,0)
+              image = cv2.rectangle(image, start, end, color)
+              image = cv2.putText(image, pred_data, (x1,y1+25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2, cv2.LINE_AA) 
+          #cv2.imwrite(opt.output_dir+'result.jpg', image)
 
-else:
-    print('[ERROR] check input image')
-    
+  else:
+      print('[ERROR] check input image')
 
-
+  return image
 
 
+classes = {
+  "car":2,
+  "truck":7,
+  "bus":5,
+  "motorcycle":3
+}
+
+def process_batch(detections, labels, iouv):
+    """
+    Return correct predictions matrix. Both sets of boxes are in (x1, y1, x2, y2) format.
+    Arguments:
+        detections (Array[N, 6]), x1, y1, x2, y2, conf, class
+        labels (Array[M, 5]), class, x1, y1, x2, y2
+    Returns:
+        correct (Array[N, 10]), for 10 IoU levels
+    """
+    correct = torch.zeros(detections.shape[0], iouv.shape[0], dtype=torch.bool, device=iouv.device)
+    iou = box_iou(labels[:, 1:], detections[:, :4])
+    x = torch.where((iou >= iouv[0]) & (labels[:, 0:1] == detections[:, 5]))  # IoU above threshold and classes match
+    if x[0].shape[0]:
+        matches = torch.cat((torch.stack(x, 1), iou[x[0], x[1]][:, None]), 1).cpu().numpy()  # [label, detection, iou]
+        if x[0].shape[0] > 1:
+            matches = matches[matches[:, 2].argsort()[::-1]]
+            matches = matches[np.unique(matches[:, 1], return_index=True)[1]]
+            # matches = matches[matches[:, 2].argsort()[::-1]]
+            matches = matches[np.unique(matches[:, 0], return_index=True)[1]]
+        matches = torch.Tensor(matches).to(iouv.device)
+        correct[matches[:, 1].long()] = matches[:, 2:3] >= iouv
+    return correct
+
+def normyolo2xyxy(yolo_coords, w, h):
+    # denormalize
+    yolo_coords[:, [0, 2]] *= w
+    yolo_coords[:, [1, 3]] *= h
+
+    x1 = yolo_coords[:, 0] - yolo_coords[:, 2] / 2
+    y1 = yolo_coords[:, 1] - yolo_coords[:, 3] / 2
+    x2 = yolo_coords[:, 0] + yolo_coords[:, 2] / 2
+    y2 = yolo_coords[:, 1] + yolo_coords[:, 3] / 2
+    return torch.stack([x1, y1, x2, y2], dim=1)
+
+def coco2xyxy(x):
+  y = x.clone() if isinstance(x, torch.Tensor) else np.copy(x)
+  y[:, 2] += x[:, 0]
+  y[:, 3] += x[:, 1]
+  return y
+
+
+
+if __name__ == '__main__':
+  # load image from coco dataset
+  img_path = "000000015338.jpg"
+  img = cv2.imread(img_path)
+  image = img.copy()
+
+  # get labels
+  labels = [[5, 264.58,201.17,84.19,59.23],
+            [2, 140.15,208.61,50.17,13.60],
+            [2, 0.0,187.2,32.65,27.37],
+            [5, 444.95,171.72,91.05,100.05],
+            [7, 67.58,185.79,78.09,35.86]]
+  
+  # get detections
+  detections = get_pred(img)
+
+  detections = torch.tensor(detections)
+  torch.set_printoptions(sci_mode=False)
+
+  
+  detections = torch.tensor(detections)
+  labels = torch.tensor(labels)
+
+  labels[:, 1:] = coco2xyxy(labels[:, 1:])
+  iou = torch.linspace(0.5, 0.95, 10)
+
+  # evaluate
+  correct = process_batch(detections, labels, iou)
+  print(detections)
+  print(labels)
+  print(correct)
+  exit(0)
+
+  for pred in labels[:, 1:]:
+    x1 = int(pred[0])
+    y1 = int(pred[1])
+    x2 = int(pred[2])
+    y2 = int(pred[3])
+
+    start = (x1,y1)
+    end = (x2,y2)
+
+    #pred_data = f'{label[pred[-1]]} {str(pred[-2]*100)[:5]}%'
+    #print(pred_data)
+    color = (0,255,0)
+    image = cv2.rectangle(image, start, end, color)
+    image = cv2.putText(image, "", (x1,y1+25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2, cv2.LINE_AA) 
+  cv2.imshow('frame', image)
+  cv2.waitKey(0)
+
+
+  """
+  for pred in detections:
+    x1 = int(pred[0])
+    y1 = int(pred[1])
+    x2 = int(pred[2])
+    y2 = int(pred[3])
+
+    start = (x1,y1)
+    end = (x2,y2)
+
+    #pred_data = f'{label[pred[-1]]} {str(pred[-2]*100)[:5]}%'
+    #print(pred_data)
+    color = (0,255,0)
+    image = cv2.rectangle(image, start, end, color)
+    image = cv2.putText(image, "", (x1,y1+25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2, cv2.LINE_AA) 
+  cv2.imshow('frame', image)
+  cv2.waitKey(0)
+  """
+
+  
+  #cm = ConfusionMatrix(nc=7)
+  #cm.process_batch(detections=detections, labels=labels)
+
+  #print(detections)
+  #print()
+  #print(labels)
+
+
+
+  """
+  img = yolov5(img)
+  print(img.shape)
+  cv2.imshow('frame', img)
+  cv2.waitKey(0) 
+  """
