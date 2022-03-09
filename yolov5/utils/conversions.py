@@ -15,14 +15,20 @@ def normyolo2xyxy(yolo_coords, w, h):
   yolo_coords[:, [0, 2]] *= w
   yolo_coords[:, [1, 3]] *= h
 
+  #x1 = yolo_coords[:, 0] - w/2
+  #y1 = yolo_coords[:, 1] - h/2
+
   x1 = yolo_coords[:, 0] - yolo_coords[:, 2] / 2
   y1 = yolo_coords[:, 1] - yolo_coords[:, 3] / 2
   x2 = yolo_coords[:, 0] + yolo_coords[:, 2] / 2
   y2 = yolo_coords[:, 1] + yolo_coords[:, 3] / 2
+  #x2 = x1 + yolo_coords[:, 2]
+  #y2 = y1 + yolo_coords[:, 3]
   return torch.stack([x1, y1, x2, y2], dim=1)
 
 def coco2xyxy(x):
-  y = x.clone() if isinstance(x, torch.Tensor) else np.copy(x)
+  x = np.array(x)
+  y = x.copy()
   y[:, 2] += x[:, 0]
   y[:, 3] += x[:, 1]
   return y

@@ -1,3 +1,4 @@
+from tkinter import W
 import torch
 import torch.nn as nn
 import cv2
@@ -5,7 +6,7 @@ import numpy as np
 from utils.general import non_max_suppression, letterbox, image_loader
 from utils.loss import ComputeLoss
 from utils.metrics import ConfusionMatrix, process_batch, ap_per_class
-from utils.conversions import coco2xyxy, scale_coords
+from utils.conversions import coco2xyxy, scale_coords, normyolo2xyxy, clip_coords
 from models.yolo import Model
 
 classnames = ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'traffic light',
@@ -17,6 +18,8 @@ classnames = ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'trai
         'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone',
         'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear',
         'hair drier', 'toothbrush']
+
+classnames = {k:classnames.index(k) for k in classnames}
 
 
 label = {}
@@ -106,26 +109,25 @@ def show_detections(detections, image):
   cv2.imshow('frame', image)
   cv2.waitKey(0)
 
-def validacao(correct, conf, pred_cls, tcls):
-  # building stats
-  stats = [(correct.cpu(), conf.cpu(), pred_cls.cpu(), tcls)]
+def validacao(stats):
 
   # compute metrics
   stats = [np.concatenate(x, 0) for x in zip(*stats)]  # to numpy
+  print(stats)
   
   if len(stats) and stats[0].any():
     tp, fp, p, r, f1, ap, ap_class = ap_per_class(*stats)
     ap50, ap = ap[:, 0], ap.mean(1)  # AP@0.5, AP@0.5:0.95
     mp, mr, map50, map = p.mean(), r.mean(), ap50.mean(), ap.mean()
-    nt = np.bincount(stats[3].astype(np.int64), minlength=7)  # number of targets per class
+    nt = np.bincount(stats[3].astype(np.int64), minlength=80)  # number of targets per class
+    print("P   R   mAP50  map0.5@0.95")
+    print(mp, mr, map50, map)
   else:
     nt = torch.zeros(1)
-
-  print("P   R   mAP50  map0.5@0.95")
-  print(mp, mr, map50, map)
+    print("Nop")
 
 
-if __name__ == '__main__':
+def testSingleImage():
   # load image from coco dataset
   img_path = "000000015338.jpg"
   img = cv2.imread(img_path)
@@ -145,7 +147,7 @@ if __name__ == '__main__':
   """
   # labels coordinates are in coco format
   # so convert them to xyxy
-  labels[:, 1:] = coco2xyxy(labels[:, 1:])
+  labels[:, 1:] = torch.tensor(coco2xyxy(labels[:, 1:]))
 
   iou = torch.linspace(0.5, 0.95, 10)
 
@@ -157,8 +159,63 @@ if __name__ == '__main__':
   pred_cls = detections[:, 5]
   tcls = labels[:, 0]
 
-  validacao(correct, conf, pred_cls, tcls)
+  # building stats
+  stats = [(correct.cpu(), conf.cpu(), pred_cls.cpu(), tcls)]
+  validacao(stats)
 
+
+import fiftyone as fo
+import fiftyone.zoo as foz
+from tqdm import tqdm
+
+def testCOCO():
+  # Download and load the validation split of COCO-2017
+  dataset = foz.load_zoo_dataset(
+    "coco-2017",
+    split="validation",
+    max_samples=100,
+    shuffle=False,
+  )
+  dataset = list(dataset)
+  stats = []
+  for sample in tqdm(dataset):
+    img = cv2.imread(sample.filepath)
+    h,w = img.shape[:-1]
+
+    # get labels
+    labels = [[classnames[det['label']]]+det['bounding_box'] for det in sample['ground_truth']['detections']]
+    labels = torch.tensor(labels)
+    if len(labels) == 1:
+      print('skiped')
+      continue
+
+    # denormalize coordinates
+    labels[:, [1, 3]] *= w
+    labels[:, [2, 4]] *= h
+    # from coco 2 xyxy
+    labels[:, 1:] = torch.tensor(coco2xyxy(labels[:, 1:]))
+
+    iou = torch.linspace(0.5, 0.95, 10)
+
+    # get detections
+    detections = torch.tensor(get_pred(img))
+
+    correct = process_batch(detections, labels, iou)
+
+    conf = detections[:, 4]
+    pred_cls = detections[:, 5]
+    tcls = labels[:, 0]
+
+    stats.append((correct.cpu(), conf.cpu(), pred_cls.cpu(), tcls))
+
+    #show_detections(labels, img)
+  validacao(stats)
+
+
+
+if __name__ == '__main__':
+  #testSingleImage()
+  testCOCO()
 
   #show_detections(detections, img)
   #show_detections(labels[:, 1:], img)
