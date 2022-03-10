@@ -43,7 +43,7 @@ def get_pred(img):
   img, h, w = image_loader(img,imsize)
   pred = model(img)[0]
 
-  pred = non_max_suppression(pred, conf_thres=0.40)[0] # conf_thres is confidence thresold
+  pred = non_max_suppression(pred, conf_thres=0.60)[0] # conf_thres is confidence thresold
 
   if pred is not None:
 
@@ -91,7 +91,8 @@ classes = {
   "motorcycle":3
 }
 
-def show_detections(detections, image):
+def show_detections(detections, image, ret=False, is_label=False):
+  img = image.copy()
   for pred in detections:
     x1 = int(pred[0])
     y1 = int(pred[1])
@@ -101,30 +102,32 @@ def show_detections(detections, image):
     start = (x1,y1)
     end = (x2,y2)
 
-    #pred_data = f'{label[pred[-1]]} {str(pred[-2]*100)[:5]}%'
-    #print(pred_data)
+    if is_label:
+      pred_data = f'{label[pred[-1].item()]}'
+    else:
+      pred_data = f'{label[pred[-1].item()]} {str(pred[-2].item()*100)[:5]}%'
+
     color = (0,255,0)
-    image = cv2.rectangle(image, start, end, color)
-    image = cv2.putText(image, "", (x1,y1+25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2, cv2.LINE_AA) 
-  cv2.imshow('frame', image)
+    img = cv2.rectangle(img, start, end, color)
+    img = cv2.putText(img, pred_data, (x1,y1+25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2, cv2.LINE_AA) 
+  if ret: return img.copy()
+  cv2.imshow('frame', img)
   cv2.waitKey(0)
 
 def validacao(stats):
 
   # compute metrics
   stats = [np.concatenate(x, 0) for x in zip(*stats)]  # to numpy
-  print(stats)
   
   if len(stats) and stats[0].any():
     tp, fp, p, r, f1, ap, ap_class = ap_per_class(*stats)
     ap50, ap = ap[:, 0], ap.mean(1)  # AP@0.5, AP@0.5:0.95
     mp, mr, map50, map = p.mean(), r.mean(), ap50.mean(), ap.mean()
     nt = np.bincount(stats[3].astype(np.int64), minlength=80)  # number of targets per class
-    print("P   R   mAP50  map0.5@0.95")
-    print(mp, mr, map50, map)
+    return mp, mr, map50, map
   else:
     nt = torch.zeros(1)
-    print("Nop")
+    return nt
 
 
 def testSingleImage():
@@ -163,6 +166,22 @@ def testSingleImage():
   stats = [(correct.cpu(), conf.cpu(), pred_cls.cpu(), tcls)]
   validacao(stats)
 
+def subjective(*stats, detections, labels, img):
+  mp, mr, map50, map = validacao([stats])
+  if map50 < 0.5:
+    print(f"mAP50: {map50}")
+    
+    # get detections images and labels image with bb
+    det_img = show_detections(detections, img, ret=True)
+    l = torch.column_stack((labels[:, 1:], labels[:, 0]))
+    lab_img = show_detections(l, img, ret=True, is_label=True)
+
+    # concatenate det_img and lab_img vertical
+    res = cv2.hconcat([det_img, lab_img])
+    cv2.imshow('frame', res)
+    cv2.waitKey(0)
+
+
 
 import fiftyone as fo
 import fiftyone.zoo as foz
@@ -185,9 +204,6 @@ def testCOCO():
     # get labels
     labels = [[classnames[det['label']]]+det['bounding_box'] for det in sample['ground_truth']['detections']]
     labels = torch.tensor(labels)
-    if len(labels) == 1:
-      print('skiped')
-      continue
 
     # denormalize coordinates
     labels[:, [1, 3]] *= w
@@ -196,23 +212,30 @@ def testCOCO():
     labels[:, 1:] = torch.tensor(coco2xyxy(labels[:, 1:]))
 
     iou = torch.linspace(0.5, 0.95, 10)
-
-    # get detections
-    detections = torch.tensor(get_pred(img))
-
-    correct = process_batch(detections, labels, iou)
-
-    conf = detections[:, 4]
-    pred_cls = detections[:, 5]
     tcls = labels[:, 0]
 
-    stats.append((correct.cpu(), conf.cpu(), pred_cls.cpu(), tcls))
+    # get detections
+    detections = get_pred(img)
+    if detections is None:
+      stats.append((torch.zeros(0, iou.numel(), dtype=torch.bool), torch.Tensor(), torch.Tensor(), tcls))
+      continue
 
-    #show_detections(labels, img)
-  validacao(stats)
+    detections = torch.tensor(detections)
+
+    correct = process_batch(detections, labels, iou)
+    conf = detections[:, 4]
+    pred_cls = detections[:, 5]
+
+    stats_params = (correct.cpu(), conf.cpu(), pred_cls.cpu(), tcls)
+    stats.append(stats_params)
+
+    # subjective
+    subjective(*stats_params, detections=detections, labels=labels, img=img)
 
 
 
+
+#print("P   R   mAP50  map0.5@0.95")
 if __name__ == '__main__':
   #testSingleImage()
   testCOCO()
