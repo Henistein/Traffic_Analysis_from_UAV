@@ -25,6 +25,7 @@ def non_max_suppression(prediction, conf_thres=0.1, iou_thres=0.6, fast=False, c
   redundant = True  # require redundant detections
   fast |= conf_thres > 0.001  # fast mode
   multi_label = nc > 1  # multiple labels per box (adds 0.5ms/img)
+
   if fast:
       merge = False
   else:
@@ -39,7 +40,7 @@ def non_max_suppression(prediction, conf_thres=0.1, iou_thres=0.6, fast=False, c
 
       # If none remain process next image
       if not x.shape[0]:
-          continue
+        continue
 
       # Compute conf
       x[:, 5:] *= x[:, 4:5]  # conf = obj_conf * cls_conf
