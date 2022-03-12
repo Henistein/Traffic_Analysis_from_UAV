@@ -5,7 +5,7 @@ import fiftyone.zoo as foz
 import cv2
 from tqdm import tqdm
 from utils.conversions import coco2xyxy
-from inference import get_pred, compute_metrics
+from inference import get_pred, compute_stats
 from utils.metrics import process_batch
 
 class Test(unittest.TestCase):
@@ -15,6 +15,8 @@ class Test(unittest.TestCase):
     self.classnames = {k:classnames.index(k) for k in classnames}
     self.weights = 'weights/yolov5x.pt'
     self.model = torch.load(self.weights)['model'].float()
+    self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    self.model.to(self.device)
     self.model.eval()
 
   def test_coco_evaluation(self):
@@ -48,7 +50,7 @@ class Test(unittest.TestCase):
       tcls = labels[:, 0]
 
       # get detections
-      detections = get_pred(img)
+      detections = get_pred(self.model, img)
       if detections is None:
         stats.append((torch.zeros(0, iou.numel(), dtype=torch.bool), torch.Tensor(), torch.Tensor(), tcls))
         continue
@@ -63,7 +65,7 @@ class Test(unittest.TestCase):
       stats.append(stats_params)
 
     # compute stats
-    mp, mr, map50, mapp = compute_metrics(stats)
+    mp, mr, map50, mapp = compute_stats(stats)
 
     self.assertTrue(mp >= 0.80)
     self.assertTrue(mr >= 0.58)

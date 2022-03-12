@@ -7,7 +7,6 @@ import time
 import numpy as np
 import torchvision
 
-torch.manual_seed(420)
 
 def autopad(k, p=None):  # kernel, padding
   # Pad to 'same'
