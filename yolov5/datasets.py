@@ -84,6 +84,12 @@ class VisdroneDataset(Dataset):
         tfs.ToTensor(),
     ])
 
+  @staticmethod
+  def collate_fn(batch):
+    img, label = zip(*batch)
+    for i, lb in enumerate(label):
+      lb[:, 0] = i
+    return torch.stack(img, 0), torch.cat(label, 0)
   
   
   def __len__(self):
@@ -125,4 +131,3 @@ class VisdroneDataset(Dataset):
     label = torch.tensor(label)
 
     return img, label
-  

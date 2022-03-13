@@ -22,7 +22,10 @@ mydataset = VisdroneDataset(
   imgs_path='/home/henistein/projects/ProjetoLicenciatura/datasets/VisDrone/VisDroneFiltered/images',
   labels_path='/home/henistein/projects/ProjetoLicenciatura/datasets/VisDrone/VisDroneFiltered/annotations'
 )
-loader = DataLoader(mydataset, batch_size=1)
+loader = DataLoader(mydataset, 
+                    batch_size=10, 
+                    pin_memory=True,
+                    collate_fn=VisdroneDataset.collate_fn)
 
 
 # cfg
@@ -57,7 +60,7 @@ for v in model.modules():
   elif hasattr(v, 'weight') and isinstance(v.weight, nn.Parameter):  # weight (with decay)
     g1.append(v.weight)
 
-epochs = 100
+epochs = 5
 lr = 0.01
 momentum = 0.937
 optimizer = torch.optim.Adam(g0, lr, betas=(momentum, 0.999))
@@ -65,7 +68,6 @@ lf = lambda x: (1 - x / epochs) * (1.0 - 0.01) + 0.01
 scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)
 
 # train
-
 
 for epoch in range(epochs):
   model.train()
@@ -94,4 +96,6 @@ for epoch in range(epochs):
 
   # Scheduler 
   scheduler.step()
+
+torch.save(model.state_dict(), 'weights/visdrone.pth')
 

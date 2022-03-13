@@ -52,7 +52,7 @@ class Detect(nn.Module):
     stride = None  # strides computed during build
     onnx_dynamic = False  # ONNX export parameter
 
-    def __init__(self, nc=80, anchors=(), ch=(), inplace=True):  # detection layer
+    def __init__(self, nc=8, anchors=(), ch=(), inplace=True):  # detection layer
         super().__init__()
         self.nc = nc  # number of classes
         self.no = nc + 5  # number of outputs per anchor
@@ -120,6 +120,7 @@ class Model(nn.Module):
     
     if anchors: # override yaml value
       self.yaml['anchors'] = anchors
+
 
     # Build strides, anchors
     m = self.model[-1]  # Detect()

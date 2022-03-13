@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import cv2 
+from models.yolo import Model
 
 from inference import get_pred, show_detections
 
@@ -18,10 +19,11 @@ def run(model, video_path, classnames):
 
     # inference
     pred = get_pred(model, frame)
-    pred = torch.tensor(pred)
+    if pred is not None:
+      pred = torch.tensor(pred)
+      # show image with bounding boxes
+      frame = show_detections(pred, frame, classnames, ret=True)
 
-    # show image with bounding boxes
-    frame = show_detections(pred, frame, classnames, ret=True)
     cv2.imshow('frame', frame)
     if cv2.waitKey(1) == ord('q'):
       break
@@ -29,15 +31,33 @@ def run(model, video_path, classnames):
   cap.release()
   cv2.destroyAllWindows()
 
-if __name__ == '__main__':
+def run_coco():
   # load classnames
   classnames = [cl.strip() for cl in open('coco_classes.txt').readlines()]
   classnames = {classnames.index(k):k for k in classnames}
-
+  cfg = 'cfg.yaml'
   video_path = '../traffic.mp4'
-
   weights = 'weights/yolov5x.pt'
+
   model = torch.load(weights)['model'].float()
+  model.to(torch.device('cuda'))
+  
+  run(model, video_path, classnames)
+
+def run_visdrone():
+  # load classnames
+  classnames = [cl.strip() for cl in open('visdrone_classes.txt').readlines()]
+  classnames = {classnames.index(k):k for k in classnames}
+  cfg = 'cfg.yaml'
+  video_path = '../traffic.mp4'
+  weights = 'weights/visdrone.pth'
+
+  model = Model(cfg, ch=3, nc=8)
+  model.load_state_dict(torch.load(weights))
+  #model = torch.load(weights)['model'].float()
   model.to(torch.device('cuda'))
 
   run(model, video_path, classnames)
+
+if __name__ == '__main__':
+  run_coco()

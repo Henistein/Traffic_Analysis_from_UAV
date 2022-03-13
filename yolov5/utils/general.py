@@ -14,7 +14,7 @@ def non_max_suppression(prediction, conf_thres=0.1, iou_thres=0.6, fast=False, c
       prediction = prediction.float()  # to FP32
 
   nc = prediction.shape[2] - 5  # number of classes
-  nc = 80
+  nc = 8
 
   xc = prediction[..., 4] > conf_thres  # candidates
 

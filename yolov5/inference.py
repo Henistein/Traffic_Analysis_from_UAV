@@ -17,7 +17,16 @@ def get_pred(model, img):
 
   device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
   img = img.to(device)
-  pred = model(img)[0]
+  pred = model(img)
+  print(pred[0].shape)
+  print(pred[1][0].shape)
+  print(pred[1][1].shape)
+  print(pred[1][2].shape)
+  #print(pred[0].shape)
+  #print(pred[1].shape)
+  #print(pred[2].shape)
+  #exit(0)
+
   pred = pred.cpu()
 
   pred = non_max_suppression(pred, conf_thres=0.60)[0] # conf_thres is confidence thresold
