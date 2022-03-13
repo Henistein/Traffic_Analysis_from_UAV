@@ -1,6 +1,5 @@
 import torch
 import unittest
-import fiftyone as fo
 import fiftyone.zoo as foz
 import cv2
 from tqdm import tqdm

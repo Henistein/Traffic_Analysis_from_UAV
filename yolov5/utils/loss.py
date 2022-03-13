@@ -80,6 +80,7 @@ class ComputeLoss:
             tobj = torch.zeros_like(pi[..., 0], device=device)  # target obj
 
             n = b.shape[0]  # number of targets
+
             if n:
                 ps = pi[b, a, gj, gi]  # prediction subset corresponding to targets
 
@@ -119,7 +120,6 @@ class ComputeLoss:
         lcls *= self.hyp['cls']
         bs = tobj.shape[0]  # batch size
         
-        print(targets)
         return (lbox + lobj + lcls) * bs, torch.cat((lbox, lobj, lcls)).detach()
 
     def build_targets(self, p, targets):

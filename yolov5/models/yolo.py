@@ -7,7 +7,6 @@ from models.common import *
 
 def parse_model(d, ch):  # model_dict, input_channels(3)
     anchors, nc, gd, gw = d['anchors'], d['nc'], d['depth_multiple'], d['width_multiple']
-    print('AQUI: ', anchors)
     na = (len(anchors[0]) // 2) # number of anchors
     no = na * (nc + 5)  # number of outputs = anchors * (classes + 5)
 
@@ -110,11 +109,17 @@ class Detect(nn.Module):
         return grid, anchor_grid
 
 class Model(nn.Module):
-  def __init__(self, cfg, ch=3):
+  def __init__(self, cfg, ch=3, nc=None, anchors=None):
     super().__init__()
     self.yaml = yaml.safe_load(open(cfg))
     self.model, self.save = parse_model(deepcopy(self.yaml), ch=[3])
     self.inplace = True
+
+    if nc: # override yaml value
+      self.yaml['nc'] = nc
+    
+    if anchors: # override yaml value
+      self.yaml['anchors'] = anchors
 
     # Build strides, anchors
     m = self.model[-1]  # Detect()
