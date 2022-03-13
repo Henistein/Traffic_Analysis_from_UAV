@@ -19,21 +19,22 @@ def is_parallel(model):
 
 
 mydataset = VisdroneDataset(
-  imgs_path='/home/henistein/projects/ProjetoLicenciatura/datasets/VisDrone/VisDrone2019-DET-train/images',
-  labels_path='/home/henistein/projects/ProjetoLicenciatura/datasets/VisDrone/VisDrone2019-DET-train/annotations'
+  imgs_path='/home/henistein/projects/ProjetoLicenciatura/datasets/VisDrone/VisDroneFiltered/images',
+  labels_path='/home/henistein/projects/ProjetoLicenciatura/datasets/VisDrone/VisDroneFiltered/annotations'
 )
 loader = DataLoader(mydataset, batch_size=1)
 
 
 # cfg
 cfg = 'cfg.yaml'
-device = torch.device('cpu' if torch.cuda.is_available() else 'cuda')
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 cuda = device.type == 'cuda'
 nc = 8
 imgsz = 640
 
 # Model
 model = Model(cfg, ch=3, nc=nc)
+model.to(device)
 
 # Model atributes
 hyp = yaml.safe_load(open('hyp.yaml'))
@@ -71,7 +72,7 @@ for epoch in range(epochs):
   pbar = tqdm(enumerate(loader), total=len(loader))
   for i,(imgs,targets) in pbar:
     imgs = imgs.to(device).float()
-    print(targets.shape)
+    targets = targets.to(device)
 
     # Forward
     with amp.autocast(enabled=cuda):
@@ -93,20 +94,4 @@ for epoch in range(epochs):
 
   # Scheduler 
   scheduler.step()
-
-
-
-#print("AUQI")
-#sample = dataset[0]
-#labels = [[0.0]+[classnames[det['label']]]+det['bounding_box'] for det in sample['ground_truth']['detections']]
-#labels = torch.tensor(labels)
-#print(labels)
-#exit(0)
-
-
-
-
-
-
-
 

@@ -91,7 +91,6 @@ class VisdroneDataset(Dataset):
   
   def __getitem__(self, index):
     name = self.names[index]
-    print(name)
     img_file = glob.glob(self.imgs_path+f"/{name}.*")
     label_file = glob.glob(self.labels_path+f"/{name}.*")
 
@@ -108,12 +107,10 @@ class VisdroneDataset(Dataset):
     label = []
     for line in f_aux.readlines():
       data = line.split(',')
-      # filter class
-      cls = int(data[-3])
-      if cls not in self.classes:
-        return
-      else:
-        cls -= 3 # convert it to fit between 0 and 7
+      # check if class is filtered
+      cls = int(data[0])
+      assert cls in self.classes, "Classes not filtered"
+      cls -= 3 # convert it to fit between 0 and 7
 
       bbox = list(map(float, data[:4]))
 
