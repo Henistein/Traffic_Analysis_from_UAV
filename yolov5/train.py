@@ -9,6 +9,8 @@ from torch.utils.data import DataLoader
 from datasets import VisdroneDataset
 from inference import get_pred, compute_stats
 from utils.metrics import process_batch
+from utils.general import non_max_suppression
+from utils.conversions import scale_coords
 
 
 # some auxiliar functions change after done
@@ -21,27 +23,36 @@ def is_parallel(model):
 
 
 def validation_round(model, val_dataset):
+  model.eval()
   pbar = tqdm(enumerate(val_dataset), total=len(val_dataset))
   stats = []
   iou = torch.linspace(0.5, 0.95, 10)
+  device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
   for i,(imgs,targets) in pbar:
 
     tcls = targets[:, 0]
+    imgs = imgs.to(device).unsqueeze(0)
+    targets = targets.to(device)
 
-    detections = get_pred(model, imgs)
-    if detections is None:
+    pred = model(imgs)[0]
+    pred = pred.cpu()
+    pred = non_max_suppression(pred, conf_thres=0.60)[0] # conf_thres is confidence thresold
+
+    if pred is None:
       stats.append((torch.zeros(0, iou.numel(), dtype=torch.bool), torch.Tensor(), torch.Tensor(), tcls))
       continue
 
-    correct = process_batch(detections, targets, iou)
-    conf = detections[:, 4]
-    pred_cls = detections[:, 5]
+    correct = process_batch(pred, targets, iou)
+    conf = pred[:, 4]
+    pred_cls = pred[:, 5]
 
     stats_params = (correct.cpu(), conf.cpu(), pred_cls.cpu(), tcls)
     stats.append(stats_params)
 
   # compute stats
-  mp, mr, map50, mapp = compute_stats(stats)
+  results = compute_stats(stats)
+  if len(results) == 1:
+    mp, mr, map50, mapp = 4*[results.item()]
 
   return mp,mr,map50,mapp
     
@@ -59,6 +70,17 @@ train_loader = DataLoader(train_dataset,
                   collate_fn=VisdroneDataset.collate_fn)
 
 # load validation dataset
+"""
+val_dataset = VisdroneDataset(
+  imgs_path='/home/henistein/projects/ProjetoLicenciatura/datasets/VisDrone/VisDroneFiltered/images',
+  labels_path='/home/henistein/projects/ProjetoLicenciatura/datasets/VisDrone/VisDroneFiltered/annotations',
+  samples=50
+)
+val_loader = DataLoader(val_dataset, 
+                  batch_size=1, 
+                  pin_memory=True,
+                  collate_fn=VisdroneDataset.collate_fn)
+"""
 val_dataset = VisdroneDataset(
   imgs_path='/home/henistein/projects/ProjetoLicenciatura/datasets/VisDrone/VisDroneFiltered/images',
   labels_path='/home/henistein/projects/ProjetoLicenciatura/datasets/VisDrone/VisDroneFiltered/annotations',
@@ -70,7 +92,6 @@ val_loader = DataLoader(val_dataset,
                   collate_fn=VisdroneDataset.collate_fn)
 
 
-
 # cfg
 cfg = 'cfg.yaml'
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -80,6 +101,7 @@ imgsz = 640
 
 # Model
 model = Model(cfg, ch=3, nc=nc)
+#model.load_state_dict(torch.load('weights/visdrone.pth'))
 model.to(device)
 
 # Model atributes
@@ -103,7 +125,7 @@ for v in model.modules():
   elif hasattr(v, 'weight') and isinstance(v.weight, nn.Parameter):  # weight (with decay)
     g1.append(v.weight)
 
-epochs = 5
+epochs = 100
 lr = 0.01
 momentum = 0.937
 optimizer = torch.optim.Adam(g0, lr, betas=(momentum, 0.999))
@@ -114,7 +136,7 @@ scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)
 
 for epoch in range(epochs):
   model.train()
-  pbar = tqdm(enumerate(loader), total=len(loader))
+  pbar = tqdm(enumerate(train_loader), total=len(train_loader))
   for i,(imgs,targets) in pbar:
     imgs = imgs.to(device).float()
     targets = targets.to(device)

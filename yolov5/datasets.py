@@ -69,13 +69,16 @@ from pathlib import Path
 import numpy as np
 
 class VisdroneDataset(Dataset):
-  def __init__(self, imgs_path, labels_path=None):
+  def __init__(self, imgs_path, labels_path=None, samples=None):
     self.imgs_path = imgs_path
     self.labels_path = labels_path
     self.images = glob.glob(imgs_path + "/*")
     self.labels = glob.glob(labels_path + "/*")
     assert len(self.images) == len(self.labels), "Number of labels and images differ"
-    self.names = [Path(f).stem for f in self.images]
+    if samples:
+      self.names = [Path(f).stem for f in self.images][:samples]
+    else:
+      self.names = [Path(f).stem for f in self.images]
     # preprocess settings
     self.classes = [3, 4, 5, 6, 7, 8, 9, 10]
     self.imsize = 640
@@ -93,7 +96,7 @@ class VisdroneDataset(Dataset):
   
   
   def __len__(self):
-    return len(self.images)
+    return len(self.names)
   
   def __getitem__(self, index):
     name = self.names[index]
