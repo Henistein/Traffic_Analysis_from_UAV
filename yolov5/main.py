@@ -15,10 +15,11 @@ def run(model, video_path, classnames):
       print("Can't receive frame (stream end?). Exiting ...")
       break
 
-    frame = cv2.resize(frame, (500, 500), interpolation=cv2.INTER_AREA)
+    frame = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_AREA)
 
     # inference
     pred = get_pred(model, frame)
+
     if pred is not None:
       pred = torch.tensor(pred)
       # show image with bounding boxes
@@ -57,7 +58,14 @@ def run_visdrone():
   #model = torch.load(weights)['model'].float()
   model.to(torch.device('cuda'))
 
-  run(model, video_path, classnames)
+  frame = cv2.imread('sample.jpg')
+  frame = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_AREA)
+
+  # inference
+  pred = get_pred(model, frame)
+
+  #run(model, video_path, classnames)
 
 if __name__ == '__main__':
+  #run_visdrone()
   run_coco()

@@ -7,6 +7,8 @@ from utils.loss import ComputeLoss
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 from datasets import VisdroneDataset
+from inference import get_pred, compute_stats
+from utils.metrics import process_batch
 
 
 # some auxiliar functions change after done
@@ -18,14 +20,55 @@ def is_parallel(model):
   return type(model) in (nn.parallel.DataParallel, nn.parallel.DistributedDataParallel)
 
 
-mydataset = VisdroneDataset(
+def validation_round(model, val_dataset):
+  pbar = tqdm(enumerate(val_dataset), total=len(val_dataset))
+  stats = []
+  iou = torch.linspace(0.5, 0.95, 10)
+  for i,(imgs,targets) in pbar:
+
+    tcls = targets[:, 0]
+
+    detections = get_pred(model, imgs)
+    if detections is None:
+      stats.append((torch.zeros(0, iou.numel(), dtype=torch.bool), torch.Tensor(), torch.Tensor(), tcls))
+      continue
+
+    correct = process_batch(detections, targets, iou)
+    conf = detections[:, 4]
+    pred_cls = detections[:, 5]
+
+    stats_params = (correct.cpu(), conf.cpu(), pred_cls.cpu(), tcls)
+    stats.append(stats_params)
+
+  # compute stats
+  mp, mr, map50, mapp = compute_stats(stats)
+
+  return mp,mr,map50,mapp
+    
+
+
+# load train dataset
+train_dataset = VisdroneDataset(
   imgs_path='/home/henistein/projects/ProjetoLicenciatura/datasets/VisDrone/VisDroneFiltered/images',
-  labels_path='/home/henistein/projects/ProjetoLicenciatura/datasets/VisDrone/VisDroneFiltered/annotations'
+  labels_path='/home/henistein/projects/ProjetoLicenciatura/datasets/VisDrone/VisDroneFiltered/annotations',
+  samples=1000
 )
-loader = DataLoader(mydataset, 
-                    batch_size=10, 
-                    pin_memory=True,
-                    collate_fn=VisdroneDataset.collate_fn)
+train_loader = DataLoader(train_dataset, 
+                  batch_size=10, 
+                  pin_memory=True,
+                  collate_fn=VisdroneDataset.collate_fn)
+
+# load validation dataset
+val_dataset = VisdroneDataset(
+  imgs_path='/home/henistein/projects/ProjetoLicenciatura/datasets/VisDrone/VisDroneFiltered/images',
+  labels_path='/home/henistein/projects/ProjetoLicenciatura/datasets/VisDrone/VisDroneFiltered/annotations',
+  samples=50
+)
+val_loader = DataLoader(val_dataset, 
+                  batch_size=1, 
+                  pin_memory=True,
+                  collate_fn=VisdroneDataset.collate_fn)
+
 
 
 # cfg
@@ -93,6 +136,12 @@ for epoch in range(epochs):
 
     # update bar
     pbar.set_description(f"Loss: {loss.item()}")
+  
+
+  # validation round
+  results = validation_round(model, val_dataset)
+  print(results)
+
 
   # Scheduler 
   scheduler.step()
