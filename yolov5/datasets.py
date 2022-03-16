@@ -1,6 +1,8 @@
 import fiftyone.zoo as foz
 import torch
+import cv2
 from torch.utils.data import Dataset, DataLoader
+from utils.general import letterbox
 from PIL import Image
 import torchvision.transforms as tfs
 
@@ -83,17 +85,34 @@ class VisdroneDataset(Dataset):
     self.classes = [3, 4, 5, 6, 7, 8, 9, 10]
     self.imsize = 640
     self.transforms = tfs.Compose([
-        tfs.Resize((self.imsize, self.imsize)),
         tfs.ToTensor(),
     ])
 
   @staticmethod
   def collate_fn(batch):
-    img, label = zip(*batch)
+    img, label, path, shapes = zip(*batch)
     for i, lb in enumerate(label):
       lb[:, 0] = i
-    return torch.stack(img, 0), torch.cat(label, 0)
+    return torch.stack(img, 0), torch.cat(label, 0), path, shapes
+
+  def load_image(self, img_path):
+    img = cv2.imread(img_path)
+    h0, w0 = img.shape[:2] # original w and h
+    r = self.imsize / max(h0, w0) # ratio
+    if r != 1: # if sizes are not equal
+      img = cv2.resize(
+           img,
+           (int(w0*r), int(h0*r)),
+           interpolation=cv2.INTER_LINEAR if r >1 else cv2.INTER_AREA
+      )
+    return img, (h0, w0), img.shape[:2] # img, hw_original, hw_resized
+                       
   
+  def convert_box(self, size, box):
+    # Convert VisDrone box to YOLO xywh box
+    dw = 1. / size[0]
+    dh = 1. / size[1]
+    return (box[0] + box[2] / 2) * dw, (box[1] + box[3] / 2) * dh, box[2] * dw, box[3] * dh
   
   def __len__(self):
     return len(self.names)
@@ -106,31 +125,29 @@ class VisdroneDataset(Dataset):
     assert len(img_file) == len(label_file), "There is labels or images with the same name"
     img_file, label_file = img_file[0], label_file[0]
 
-    # preprocess image 
-    img = Image.open(img_file)
-    w, h = img.size
+    # load image 
+    img, (h0, w0), (h, w) = self.load_image(img_file)
+    img, ratio, pad = letterbox(img, self.imsize, auto=False)
     img = self.transforms(img)
+    shapes = (h0, w0), ((h/h0, w/w0), pad)
 
-    # preprocess label
+    # load labels
     f_aux = open(label_file)
     label = []
     for line in f_aux.readlines():
       data = line.split(',')
       # check if class is filtered
+      #assert cls in self.classes, "Classes not filtered"
+      #cls -= 3 # convert it to fit between 0 and 7
+
       cls = int(data[0])
-      assert cls in self.classes, "Classes not filtered"
-      cls -= 3 # convert it to fit between 0 and 7
+      bbox = list(map(int, data[:4]))
 
-      bbox = list(map(float, data[:4]))
+      # convert visdrone format to yolo format
+      bbox = self.convert_box((w0, h0), bbox)
 
-      # normalize bbox and scale it with imsize
-      bbox[0] = (bbox[0] / w) * self.imsize
-      bbox[1] = (bbox[1] / h) * self.imsize
-      bbox[2] = (bbox[2] / w) * self.imsize
-      bbox[3] = (bbox[3] / h) * self.imsize
-
-      label.append([0]+[cls]+bbox)
+      label.append([0]+[cls]+list(bbox))
     
     label = torch.tensor(label)
 
-    return img, label
+    return img, label, img_file, shapes
