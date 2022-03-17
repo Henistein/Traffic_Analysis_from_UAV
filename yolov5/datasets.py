@@ -5,6 +5,7 @@ from torch.utils.data import Dataset, DataLoader
 from utils.general import letterbox
 from PIL import Image
 import torchvision.transforms as tfs
+from utils.conversions import scale_coords, xywh2xyxy, xywhn2xyxy, xyxy2xywhn
 
 def load_coco_classnames():
   classnames = [cl.strip() for cl in open('coco_classes.txt').readlines()]
@@ -70,6 +71,8 @@ import glob
 from pathlib import Path
 import numpy as np
 
+import torchvision.transforms as tfs
+
 class VisdroneDataset(Dataset):
   def __init__(self, imgs_path, labels_path=None, samples=None):
     self.imgs_path = imgs_path
@@ -120,10 +123,10 @@ class VisdroneDataset(Dataset):
   def __getitem__(self, index):
     name = self.names[index]
     img_file = glob.glob(self.imgs_path+f"/{name}.*")
-    label_file = glob.glob(self.labels_path+f"/{name}.*")
+    labels_file = glob.glob(self.labels_path+f"/{name}.*")
 
-    assert len(img_file) == len(label_file), "There is labels or images with the same name"
-    img_file, label_file = img_file[0], label_file[0]
+    assert len(img_file) == len(labels_file), "There is labels or images with the same name"
+    img_file, labels_file = img_file[0], labels_file[0]
 
     # load image 
     img, (h0, w0), (h, w) = self.load_image(img_file)
@@ -132,22 +135,29 @@ class VisdroneDataset(Dataset):
     shapes = (h0, w0), ((h/h0, w/w0), pad)
 
     # load labels
-    f_aux = open(label_file)
-    label = []
+    f_aux = open(labels_file)
+    labels = []
     for line in f_aux.readlines():
       data = line.split(',')
       # check if class is filtered
       #assert cls in self.classes, "Classes not filtered"
       #cls -= 3 # convert it to fit between 0 and 7
 
-      cls = int(data[0])
+      if int(data[4]) == 0: # VisDrone 'ignored regions' 0 class
+        continue
+      cls = int(data[5]) - 1
       bbox = list(map(int, data[:4]))
 
       # convert visdrone format to yolo format
       bbox = self.convert_box((w0, h0), bbox)
 
-      label.append([0]+[cls]+list(bbox))
-    
-    label = torch.tensor(label)
 
-    return img, label, img_file, shapes
+      labels.append([0]+[cls]+list(bbox))
+    
+    labels = torch.tensor(labels)
+    # normalized xywh to pixel xyxy format
+    labels[:, 2:] = xywhn2xyxy(labels[:, 2:], ratio[0] * w, ratio[1] * h, padw=pad[0], padh=pad[1])
+    # pixel xyxy format to xywh normalized
+    labels[:, 2:] = xyxy2xywhn(labels[:, 2:], w=img.shape[1], h=img.shape[2], clip=True, eps=1E-3)
+
+    return img, labels, img_file, shapes
