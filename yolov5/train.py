@@ -3,6 +3,7 @@ import torch.nn as nn
 from torch.cuda import amp
 from models.yolo import Model
 import yaml
+import numpy as np
 from utils.loss import ComputeLoss
 from tqdm import tqdm
 from torch.utils.data import DataLoader
@@ -11,6 +12,44 @@ from inference import get_pred, compute_stats
 from utils.metrics import process_batch
 from utils.general import non_max_suppression
 from utils.conversions import scale_coords, xywh2xyxy, xywhn2xyxy, xywhn2xyxy
+import math
+from copy import deepcopy
+
+
+class ModelEMA:
+    """ Updated Exponential Moving Average (EMA) from https://github.com/rwightman/pytorch-image-models
+    Keeps a moving average of everything in the model state_dict (parameters and buffers)
+    For EMA details see https://www.tensorflow.org/api_docs/python/tf/train/ExponentialMovingAverage
+    """
+
+    def __init__(self, model, decay=0.9999, tau=2000, updates=0):
+        # Create EMA
+        self.ema = deepcopy(de_parallel(model)).eval()  # FP32 EMA
+        # if next(model.parameters()).device.type != 'cpu':
+        #     self.ema.half()  # FP16 EMA
+        self.updates = updates  # number of EMA updates
+        self.decay = lambda x: decay * (1 - math.exp(-x / tau))  # decay exponential ramp (to help early epochs)
+        for p in self.ema.parameters():
+            p.requires_grad_(False)
+
+    def update(self, model):
+        # Update EMA parameters
+        with torch.no_grad():
+            self.updates += 1
+            d = self.decay(self.updates)
+
+            msd = de_parallel(model).state_dict()  # model state_dict
+            for k, v in self.ema.state_dict().items():
+                if v.dtype.is_floating_point:
+                    v *= d
+                    v += (1 - d) * msd[k].detach()
+
+    """
+    def update_attr(self, model, include=(), exclude=('process_group', 'reducer')):
+        # Update EMA attributes
+        copy_attr(self.ema, model, include, exclude)
+    """
+
 
 
 # some auxiliar functions change after done
@@ -21,6 +60,7 @@ def is_parallel(model):
   # Returns True if model is of type DP or DDP
   return type(model) in (nn.parallel.DataParallel, nn.parallel.DistributedDataParallel)
 
+batch_size = 10
 def load_visdrone_datasets():
 
   t = VisdroneDataset(
@@ -28,7 +68,7 @@ def load_visdrone_datasets():
     labels_path='/home/henistein/playground/datasets/VisDrone/VisDrone2019-DET-train/annotations'
   )
   tt = DataLoader(t,
-                  batch_size=10,
+                  batch_size=batch_size,
                   pin_memory=True,
                   collate_fn=VisdroneDataset.collate_fn)
 
@@ -70,7 +110,7 @@ def validation_round(model, val_dataset):
 
       if len(pred) == 0:
         if nl:
-          stats.append((torch.zeros(0, niou, dtype=torch.bool), torch.Tensor(), torch.Tensor(), tcls))
+          stats.append((torch.zeros(0, iou.numel(), dtype=torch.bool), torch.Tensor(), torch.Tensor(), tcls))
           continue 
 
       # Predictions
@@ -104,6 +144,8 @@ imgsz = 640
 # Model
 #model.load_state_dict(torch.load('weights/visdrone.pth'))
 model = Model(cfg, ch=3, nc=nc).to(device)
+# EMA
+ema = ModelEMA(model)
 
 # Hyperparameters
 hyp = yaml.safe_load(open('hyp.yaml'))
@@ -142,13 +184,29 @@ scheduler.last_epoch = -1  # do not move
 
 train_loader, val_loader = load_visdrone_datasets()
 # train
+nb = len(train_loader)
+nw = max(round(hyp['warmup_epochs'] * nb), 100)  # number of warmup iterations, max(3 epochs, 100 iterations)
 
 for epoch in range(epochs):
   model.train()
   pbar = tqdm(enumerate(train_loader), total=len(train_loader))
   optimizer.zero_grad()
   for i,(imgs,targets,paths, _) in pbar:
+    ni = i + nb * epoch  # number integrated batches (since train start)
     imgs = imgs.to(device, non_blocking=True).float() / 255  # uint8 to float32, 0-255 to 0.0-1.0
+    
+
+    # Warmup
+    if ni <= nw:
+      xi = [0, nw]  # x interp
+      # compute_loss.gr = np.interp(ni, xi, [0.0, 1.0])  # iou loss ratio (obj_loss = 1.0 or iou)
+      accumulate = max(1, np.interp(ni, xi, [1, nbs / batch_size]).round())
+      for j, x in enumerate(optimizer.param_groups):
+        # bias lr falls from 0.1 to lr0, all other lrs rise from 0.0 to lr0
+        x['lr'] = np.interp(ni, xi, [hyp['warmup_bias_lr'] if j == 2 else 0.0, x['initial_lr'] * lf(epoch)])
+        if 'momentum' in x:
+          x['momentum'] = np.interp(ni, xi, [hyp['warmup_momentum'], hyp['momentum']])
+      
 
     # Forward
     with amp.autocast(enabled=cuda):
@@ -162,6 +220,7 @@ for epoch in range(epochs):
     scaler.step(optimizer)
     scaler.update()
     optimizer.zero_grad()
+    ema.update(model)
 
     # update bar
     pbar.set_description(f"Loss: {loss.item()}")
@@ -171,7 +230,7 @@ for epoch in range(epochs):
   scheduler.step()
 
   # validation round
-  results = validation_round(model, val_loader)
+  results = validation_round(ema.ema, val_loader)
   print('Results: ', results)
 
 
