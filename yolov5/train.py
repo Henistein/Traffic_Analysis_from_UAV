@@ -148,7 +148,10 @@ model = Model(cfg, ch=3, nc=nc).to(device)
 ema = ModelEMA(model)
 
 # Hyperparameters
+nbs = 64 # nominal batch
+accumulate = max(round(nbs / batch_size), 1)  # accumulate loss before optimizing
 hyp = yaml.safe_load(open('hyp.yaml'))
+hyp['weight_decay'] *= batch_size * accumulate / nbs  # scale weight_decay
 nl = de_parallel(model).model[-1].nl  # number of detection layers (to scale hyps)
 hyp['box'] *= 3 / nl  # scale to layers
 hyp['cls'] *= nc / 80 * 3 / nl  # scale to classes and layers
@@ -173,7 +176,7 @@ for v in model.modules():
 epochs = 100
 lr = 0.01
 momentum = 0.937
-nbs = 64 # nominal batch
+# Optimizer
 optimizer = torch.optim.SGD(g0, lr=lr, momentum=momentum, nesterov=True)
 optimizer.add_param_group({'params': g1, 'weight_decay': hyp['weight_decay']})  # add g1 with weight_decay
 optimizer.add_param_group({'params': g2})  # add g2 (biases)
@@ -186,6 +189,7 @@ train_loader, val_loader = load_visdrone_datasets()
 # train
 nb = len(train_loader)
 nw = max(round(hyp['warmup_epochs'] * nb), 100)  # number of warmup iterations, max(3 epochs, 100 iterations)
+last_opt_step = -1
 
 for epoch in range(epochs):
   model.train()
@@ -216,11 +220,14 @@ for epoch in range(epochs):
     # Backward
     scaler.scale(loss).backward()
     
-    # Optimize
-    scaler.step(optimizer)
-    scaler.update()
-    optimizer.zero_grad()
-    ema.update(model)
+    # Optimizer
+    if ni - last_opt_step >= accumulate:
+      scaler.step(optimizer)  # optimizer.step
+      scaler.update()
+      optimizer.zero_grad()
+      if ema:
+        ema.update(model)
+      last_opt_step = ni
 
     # update bar
     pbar.set_description(f"Loss: {loss.item()}")
