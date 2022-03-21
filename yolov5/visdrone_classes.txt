@@ -1,3 +1,5 @@
+ predestrian
+ people
  bicycle
  car
  van

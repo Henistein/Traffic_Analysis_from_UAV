@@ -22,11 +22,12 @@ def get_pred(model, img):
 
   pred = pred.cpu()
 
-  pred = non_max_suppression(pred, conf_thres=0.10)[0] # conf_thres is confidence thresold
+  pred = non_max_suppression(pred, conf_thres=0.45)[0] # conf_thres is confidence thresold
 
   if pred is not None:
     # scale coords to match true image size
-    pred = scale_coords((h, w), img[0].shape[1:], pred)
+    #pred = scale_coords((h, w), img[0].shape[1:], pred)
+    pred = scale_coords((h, w), pred, img[0].shape[1:])
   
   return pred
                 

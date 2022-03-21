@@ -21,7 +21,7 @@ def run(model, video_path, classnames):
     pred = get_pred(model, frame)
 
     if pred is not None:
-      pred = torch.tensor(pred)
+      #pred = pred.clone().detach().cpu()
       # show image with bounding boxes
       frame = show_detections(pred, frame, classnames, ret=True)
 
@@ -51,21 +51,15 @@ def run_visdrone():
   classnames = {classnames.index(k):k for k in classnames}
   cfg = 'cfg.yaml'
   video_path = '../traffic.mp4'
-  weights = 'weights/visdrone.pth'
+  weights = 'weights/visdrone50.pt'
 
-  model = Model(cfg, ch=3, nc=8)
-  model.load_state_dict(torch.load(weights))
-  #model = torch.load(weights)['model'].float()
+  model = Model(cfg, ch=3, nc=10)
+  #model.load_state_dict(torch.load(weights))
+  model = torch.load(weights)['model'].float()
   model.to(torch.device('cuda'))
 
-  frame = cv2.imread('sample.jpg')
-  frame = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_AREA)
-
-  # inference
-  pred = get_pred(model, frame)
-
-  #run(model, video_path, classnames)
+  run(model, video_path, classnames)
 
 if __name__ == '__main__':
-  #run_visdrone()
-  run_coco()
+  run_visdrone()
+  #run_coco()
