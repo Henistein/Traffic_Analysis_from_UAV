@@ -1,6 +1,15 @@
 import torch
 import numpy as np
 
+def xyxy2xywh(x):
+  # Convert nx4 boxes from [x1, y1, x2, y2] to [x, y, w, h] where xy1=top-left, xy2=bottom-right
+  y = x.clone() if isinstance(x, torch.Tensor) else np.copy(x)
+  y[:, 0] = (x[:, 0] + x[:, 2]) / 2  # x center
+  y[:, 1] = (x[:, 1] + x[:, 3]) / 2  # y center
+  y[:, 2] = x[:, 2] - x[:, 0]  # width
+  y[:, 3] = x[:, 3] - x[:, 1]  # height
+  return y
+
 def xywh2xyxy(x):
   # Convert nx4 boxes from [x, y, w, h] to [x1, y1, x2, y2] where xy1=top-left, xy2=bottom-right
   y = x.clone() if isinstance(x, torch.Tensor) else np.copy(x)
@@ -87,6 +96,7 @@ def clip_coords(shape, coords):
 """
 
 def scale_coords(img1_shape, coords, img0_shape, ratio_pad=None):
+    # img1 (old) | img0 (new)
     # Rescale coords (xyxy) from img1_shape to img0_shape
     if ratio_pad is None:  # calculate from img0_shape
         gain = min(img1_shape[0] / img0_shape[0], img1_shape[1] / img0_shape[1])  # gain  = old / new
