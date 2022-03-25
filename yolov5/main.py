@@ -7,6 +7,7 @@ from deep_sort.deep_sort import DeepSort
 from deep_sort.utils.parser import get_config
 
 from inference import get_pred, show_detections
+from utils.conversions import scale_coords
 
 
 def run(model, video_path, classnames):
@@ -83,7 +84,10 @@ def run_deepsort(model, video_path):
       print("Can't receive frame (stream end?). Exiting ...")
       break
 
-    frame = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_AREA)
+    orig = frame.copy()
+    #h,w = frame.shape[:2]
+    #print(h,w)
+    #frame = cv2.resize(frame, (640, 640), interpolation=cv2.INTER_AREA)
     img = frame.copy()
 
     # inference
@@ -109,12 +113,17 @@ def run_deepsort(model, video_path):
         c = int(cls) # integer class
         label = f'{id} {classnames[c]} {conf:.2f}'
 
+        # scale  bboxes to original
+        #bboxes = scale_coords((640, 640), np.expand_dims(bboxes, 0).astype(np.float64), (h,w))[0].astype(np.int64)
+
         start = bboxes[[0, 1]]
         end = bboxes[[2, 3]]
+
 
         color = (0,255,0)
         img = cv2.rectangle(img, start, end, color)
         img = cv2.putText(img, label, (bboxes[0],bboxes[1]+25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2, cv2.LINE_AA) 
+
         cv2.imshow('frame', img)
         if cv2.waitKey(1) == ord('q'):
           break
@@ -130,4 +139,4 @@ if __name__ == '__main__':
 
   model = torch.load(weights)['model'].float()
   model.to(torch.device('cuda'))
-  run_deepsort(model, '../traffic.mp4')
+  run_deepsort(model, 'videos/drone1.MP4')
