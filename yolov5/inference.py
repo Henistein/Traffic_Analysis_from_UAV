@@ -13,6 +13,7 @@ class Inference:
       device = 'cuda' if torch.cuda.is_available() else 'cpu'
     self.device = torch.device(device)
     self.model = model.to(self.device).eval()
+    self.annotator = Annotator()
 
     self.imsize = imsize
     self.conf_thres = conf_thres
@@ -36,7 +37,9 @@ class Inference:
     return pred
                 
   @staticmethod
-  def attach_detections(detections, img, classnames, has_id=False, is_label=False):
+  def attach_detections(ctx, detections, img, classnames, has_id=False, is_label=False):
+    # add image to annotator
+    ctx.annotator.add_image(img)
     for pred in detections:
       x1,y1,x2,y2 = map(int, pred[:4])
 
@@ -52,12 +55,11 @@ class Inference:
         label = f'{classnames[c]}' 
       else:
         label = f'{classnames[c]} {str(p*100)[:5]}%'
+      
+      # annotate image
+      ctx.annotator.draw(start, end, label, c)
 
-      color = (0,255,0)
-      img = cv2.rectangle(img, start, end, color)
-      img = cv2.putText(img, label, (x1,y1+25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2, cv2.LINE_AA) 
-
-    return img.copy()
+    return ctx.annotator.image
 
 
   @staticmethod
@@ -91,3 +93,27 @@ class Inference:
       res = cv2.hconcat([det_img, lab_img])
       cv2.imshow('frame', res)
       cv2.waitKey(0)
+
+class Annotator:
+  def __init__(self):
+    colors = ('FF3838', 'FF9D97', 'FF701F', 'FFB21D', 'CFD231', '48F90A', '92CC17', '3DDB86', '1A9334', '00D4BB')
+    hex2rgb = lambda h: tuple(int(h[1 + i:1 + i + 2], 16) for i in (0, 2, 4))
+    self.palette = [hex2rgb('#' + c) for c in colors]
+    self.img = None
+  
+  @property
+  def image(self):
+    return self.img.copy()
+
+  def add_image(self, image):
+    self.img = image
+    self.lw =  max(round(sum(image.shape) / 2 * 0.003), 2)
+  
+  def _generate_color(self, i):
+    # generate color by class
+    return self.palette[int(i) % len(self.palette)]
+
+  def draw(self, start, end, label, cls):
+    color = self._generate_color(cls)
+    self.img = cv2.rectangle(self.img, start, end, color, thickness=self.lw, lineType=cv2.LINE_AA)
+    self.img = cv2.putText(self.img, label, (start[0], start[1]+25), 0, 0.5, color, thickness=max(self.lw - 1, 1), lineType=cv2.LINE_AA)

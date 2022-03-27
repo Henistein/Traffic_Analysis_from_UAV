@@ -107,7 +107,7 @@ def run_deepsort(model, video_path):
       confs = confs.unsqueeze(0).numpy().T
       outputs = np.append(np.append(outputs[:, :5], confs, axis=1), outputs[:, 5].reshape(-1, 1), axis=1) # hack to be [bboxes, conf, class]
 
-    frame = inf.attach_detections(outputs, frame, classnames, has_id=True)
+    frame = inf.attach_detections(inf, outputs, frame, classnames, has_id=True)
     cv2.imshow('frame', frame)
     if cv2.waitKey(1) == ord('q'):
       break
