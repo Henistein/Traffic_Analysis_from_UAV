@@ -7,6 +7,7 @@ from deep_sort.deep_sort import DeepSort
 from deep_sort.utils.parser import get_config
 
 from inference import Inference
+from heatmap import HeatMap
 from utils.conversions import scale_coords
 
 
@@ -55,7 +56,7 @@ def run_visdrone():
   classnames = {classnames.index(k):k for k in classnames}
   cfg = 'cfg.yaml'
   video_path = '../traffic.mp4'
-  weights = 'weights/visdrone100.pt'
+  weights = 'weights/visdrone.pt'
 
   #model = Model(cfg, ch=3, nc=10)
   #model.load_state_dict(torch.load(weights))
@@ -77,8 +78,11 @@ def run_deepsort(model, video_path):
                       max_iou_distance=cfg.DEEPSORT.MAX_IOU_DISTANCE,
                       max_age=cfg.DEEPSORT.MAX_AGE, n_init=cfg.DEEPSORT.N_INIT, nn_budget=cfg.DEEPSORT.NN_BUDGET,
                       )
+  # heatmap
+  heatmap = HeatMap()
   while cap.isOpened():
     ret, frame = cap.read()
+
     if not ret:
       print("Can't receive frame (stream end?). Exiting ...")
       break
@@ -104,10 +108,17 @@ def run_deepsort(model, video_path):
       outputs = outputs[:min_dim]
       confs = confs[:min_dim]
 
+      # add centers to heatmap
+      heatmap.update_points(outputs[:, :4])
+
       confs = confs.unsqueeze(0).numpy().T
-      outputs = np.append(np.append(outputs[:, :5], confs, axis=1), outputs[:, 5].reshape(-1, 1), axis=1) # hack to be [bboxes, conf, class]
+      outputs = np.append(np.append(outputs[:, :5], confs, axis=1), outputs[:, 5].reshape(-1, 1), axis=1) # hack to be [bboxes, id, conf, class]
+      
 
     frame = inf.attach_detections(inf, outputs, frame, classnames, has_id=True)
+    # draw heatpoints in the frame
+    frame = heatmap.draw_center(frame)
+
     cv2.imshow('frame', frame)
     if cv2.waitKey(1) == ord('q'):
       break
@@ -123,4 +134,4 @@ if __name__ == '__main__':
 
   model = torch.load(weights)['model'].float()
   model.to(torch.device('cuda'))
-  run_deepsort(model, 'videos/drone1.MP4')
+  run_deepsort(model, 'videos/visdrone1.MP4')

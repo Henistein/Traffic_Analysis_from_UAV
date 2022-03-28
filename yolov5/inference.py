@@ -50,7 +50,8 @@ class Inference:
       end = (x2,y2)
 
       if has_id:
-        label = f'{pred[4]} {classnames[c]} {p:.2f}'
+        #label = f'{pred[4]} {classnames[c]} {p:.2f}'
+        label = f'{pred[4]}'
       elif is_label:
         label = f'{classnames[c]}' 
       else:
