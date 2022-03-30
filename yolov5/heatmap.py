@@ -7,10 +7,8 @@ pts2 = np.array([(104, 46), (165, 53), (164, 134), (162, 162), (156, 271), (156,
 class HeatMap:
   def __init__(self, map_img_path):
     self.heat_points = {}
-    self.map_img = cv2.imread(map_img_path, 0)
-    #self.map_img = self.map_img.reshape(self.map_img.shape+(1,))
-    self.mask = np.zeros(self.map_img.shape+(3,))
-    self.heatmap = None
+    self.points_list = []
+    self.map_img = cv2.imread(map_img_path)
 
   def numpy_points(self):
     ret= np.array(list(self.heat_points.keys()))
@@ -23,30 +21,31 @@ class HeatMap:
     for det in bboxes:
       x1,y1,x2,y2 = det
       center = (int((x1+x2)/2), int((y1+y2)/2))
+      self.points_list.append(center)
       if center in self.heat_points.keys():
         self.heat_points[center] += 1
       else:
         self.heat_points[center] = 1
 
-  def update_heatmap(self):
-    color = ()
-    for point in self.heat_points:
-      occ = self.heat_points[point]
+  def draw_heatmap(self):
+    while True:
+      if len(self.points_list):
+        print('TOU')
+        xi, yi, zi, x, y = self.draw_heatmap()
+        plt.pcolormesh(xi, yi, zi.reshape(xi.shape), alpha=0.5, shading='auto')
+        plt.xlim(x.min(), x.max())
+        plt.ylim(y.max(), y.min())
+        plt.imshow(self.map_img)
+        plt.pause(0.05)
 
-      if px > self.mask.shape[1] or py > self.mask.shape[0]:
-        continue
-      occ *= 10
-      if occ > 765:
-        color = (255, 255, 255)
-      elif occ > 510:
-        color = (255, 255, occ%510)
-      elif occ > 255:
-        color = (255, occ%255, 0)
-      else:
-        color = (occ, 0, 0)
-      self.mask[(px, py)] = list(color) 
-      print(self.mask[(px, py)])
-
+  def calc_gaussian_kde(self):
+    x, y = np.array(self.points_list).T
+    # gaussian kernel density estimation
+    k = gaussian_kde(np.vstack([x, y]))
+    xi, yi = np.mgrid[x.min():x.max():x.size**0.5*1j,y.min():y.max():y.size**0.5*1j]
+    zi = k(np.vstack([xi.flatten(), yi.flatten()]))
+    return xi, yi, zi, x, y
+    
   def calc_homograpy_matrix(self, pts1, pts2):
     # find homography
     self.M, _ = cv2.findHomography(pts1, pts2, cv2.RANSAC)

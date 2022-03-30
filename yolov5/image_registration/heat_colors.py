@@ -32,44 +32,23 @@ for point in points:
 
 # heatmap
 from scipy.stats.kde import gaussian_kde
+from PIL import Image
+import io
 img = plt.imread('rua.png')
-print(img.shape)
 
 points_list = np.array(points_list)
 x, y = points_list[:, 0], points_list[:, 1]
+#x,y = np.array(list(points_dict.keys())).T
+#weights = np.array(list(points_dict.values()))
 
 k = gaussian_kde(np.vstack([x, y]))
 xi, yi = np.mgrid[x.min():x.max():x.size**0.5*1j,y.min():y.max():y.size**0.5*1j]
 zi = k(np.vstack([xi.flatten(), yi.flatten()]))
 
 # alpha=0.5 will make the plots semitransparent
-plt.pcolormesh(xi, yi, zi.reshape(xi.shape), alpha=0.5)
-
-# you can also overlay your soccer field
-#plt.imshow(img, extent=[x.min(), x.max(), y.min(), y.max()])
+plt.pcolormesh(xi, yi, zi.reshape(xi.shape), alpha=0.5, shading='auto')
+plt.xlim(x.min(), x.max())
+plt.ylim(y.max(), y.min())
 plt.imshow(img)
 plt.show()
 
-"""
-heatmap, xedges, yedges = np.histogram2d(X, Y)
-extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
-
-plt.pcolormesh(xedges, yedges, heatmap.T)
-
-#plt.clf()
-#plt.imshow(heatmap.T, extent=extent, origin='lower')
-plt.show()
-"""
-
-"""
-for point in points:
-  w,h = point
-  heatmap = cv2.circle(heatmap, (w,h), radius=5, color=(0, 255, 255), thickness=-1)
-
-heatmap = heatmap.astype(np.uint8)
-
-dst = cv2.addWeighted(img, 0.5, heatmap, 0.5, 0)
-
-cv2.imshow('image', dst)
-cv2.waitKey(0) 
-"""

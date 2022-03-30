@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import cv2 
 from models.yolo import Model
+from multiprocessing import Process
 from utils.conversions import xyxy2xywh
 from deep_sort.deep_sort import DeepSort
 from deep_sort.utils.parser import get_config
@@ -80,6 +81,9 @@ def run_deepsort(model, video_path):
                       )
   # heatmap
   heatmap = HeatMap('image_registration/rua.png')
+  p = Process(target=heatmap.draw_heatmap, args=())
+  p.start()
+
   while cap.isOpened():
     ret, frame = cap.read()
 
@@ -119,13 +123,10 @@ def run_deepsort(model, video_path):
     # draw heatpoints in the frame
     frame = heatmap.draw_center(frame)
 
-
     cv2.imshow('frame', frame)
-    #heatmap.update_heatmap()
-    if len(heatmap.heat_points):
-      np.savetxt('points.txt', heatmap.numpy_points(), delimiter=' ')
     if cv2.waitKey(1) == ord('q'):
       break
+  p.join()
   cap.release()
   cv2.destroyAllWindows()
 
