@@ -79,7 +79,7 @@ def run_deepsort(model, video_path):
                       max_age=cfg.DEEPSORT.MAX_AGE, n_init=cfg.DEEPSORT.N_INIT, nn_budget=cfg.DEEPSORT.NN_BUDGET,
                       )
   # heatmap
-  heatmap = HeatMap()
+  heatmap = HeatMap('image_registration/rua.png')
   while cap.isOpened():
     ret, frame = cap.read()
 
@@ -115,11 +115,15 @@ def run_deepsort(model, video_path):
       outputs = np.append(np.append(outputs[:, :5], confs, axis=1), outputs[:, 5].reshape(-1, 1), axis=1) # hack to be [bboxes, id, conf, class]
       
 
-    frame = inf.attach_detections(inf, outputs, frame, classnames, has_id=True)
+    #frame = inf.attach_detections(inf, outputs, frame, classnames, has_id=True)
     # draw heatpoints in the frame
     frame = heatmap.draw_center(frame)
 
+
     cv2.imshow('frame', frame)
+    #heatmap.update_heatmap()
+    if len(heatmap.heat_points):
+      np.savetxt('points.txt', heatmap.numpy_points(), delimiter=' ')
     if cv2.waitKey(1) == ord('q'):
       break
   cap.release()
@@ -134,4 +138,4 @@ if __name__ == '__main__':
 
   model = torch.load(weights)['model'].float()
   model.to(torch.device('cuda'))
-  run_deepsort(model, 'videos/visdrone1.MP4')
+  run_deepsort(model, 'videos/drone2.MP4')

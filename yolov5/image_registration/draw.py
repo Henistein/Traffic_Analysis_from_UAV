@@ -41,7 +41,7 @@ if __name__ == '__main__':
   #print(maps_img_pts)
 
   # annotate dron image
-  drone_image = 'drone.png'
+  drone_image = 'real_drone.png'
   #drone_img_pts = annotate_image(drone_image)
   #print(drone_img_pts)
   p1 = Process(target=annotate_image, args=(maps_image,))
