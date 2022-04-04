@@ -1,5 +1,9 @@
 import cv2
 import numpy as np
+import io
+from scipy.stats.kde import gaussian_kde
+from PIL import Image
+import matplotlib.pyplot as plt
 
 pts1 = np.array([(669, 639), (472, 586), (709, 428), (761, 395), (879, 313), (953, 264), (334, 687), (644, 473), (804, 365), (909, 297), (615, 562), (671, 519), (721, 479), (757, 451), (794, 423)])
 pts2 = np.array([(104, 46), (165, 53), (164, 134), (162, 162), (156, 271), (156, 389), (163, 23), (163, 102), (158, 196), (156, 305), (140, 69), (139, 87), (137, 105), (137, 128), (137, 146)])
@@ -27,19 +31,21 @@ class HeatMap:
       else:
         self.heat_points[center] = 1
 
-  def draw_heatmap(self):
+  def draw_heatmap(self, q):
     while True:
-      if len(self.points_list):
-        print('TOU')
-        xi, yi, zi, x, y = self.draw_heatmap()
+      print('AUI')
+      points_list = q.get()
+      if points_list:
+        xi, yi, zi, x, y = self.calc_gaussian_kde(points_list)
         plt.pcolormesh(xi, yi, zi.reshape(xi.shape), alpha=0.5, shading='auto')
-        plt.xlim(x.min(), x.max())
-        plt.ylim(y.max(), y.min())
-        plt.imshow(self.map_img)
-        plt.pause(0.05)
-
-  def calc_gaussian_kde(self):
-    x, y = np.array(self.points_list).T
+        #plt.xlim(x.min(), x.max())
+        #plt.ylim(y.max(), y.min())
+        #plt.imshow(self.map_img)
+        #plt.show()
+        #plt.pause(0.05)
+        
+  def calc_gaussian_kde(self, points_list):
+    x, y = np.array(points_list).T
     # gaussian kernel density estimation
     k = gaussian_kde(np.vstack([x, y]))
     xi, yi = np.mgrid[x.min():x.max():x.size**0.5*1j,y.min():y.max():y.size**0.5*1j]

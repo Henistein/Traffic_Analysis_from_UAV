@@ -2,7 +2,7 @@ import torch
 import numpy as np
 import cv2 
 from models.yolo import Model
-from multiprocessing import Process
+from multiprocessing import Process, Queue
 from utils.conversions import xyxy2xywh
 from deep_sort.deep_sort import DeepSort
 from deep_sort.utils.parser import get_config
@@ -81,7 +81,8 @@ def run_deepsort(model, video_path):
                       )
   # heatmap
   heatmap = HeatMap('image_registration/rua.png')
-  p = Process(target=heatmap.draw_heatmap, args=())
+  q = Queue()
+  p = Process(target=heatmap.draw_heatmap, args=(q,))
   p.start()
 
   while cap.isOpened():
@@ -114,6 +115,8 @@ def run_deepsort(model, video_path):
 
       # add centers to heatmap
       heatmap.update_points(outputs[:, :4])
+      # update queue
+      q.put(heatmap.points_list)
 
       confs = confs.unsqueeze(0).numpy().T
       outputs = np.append(np.append(outputs[:, :5], confs, axis=1), outputs[:, 5].reshape(-1, 1), axis=1) # hack to be [bboxes, id, conf, class]
