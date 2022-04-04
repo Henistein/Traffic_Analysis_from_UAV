@@ -8,7 +8,7 @@ from models.yolo import Model
 
 
 class Inference:
-  def __init__(self, model, conf_thres=0.5, iou_thres=0.5, imsize=640, device=None):
+  def __init__(self, model, conf_thres=0.001, iou_thres=0.5, imsize=640, device=None):
     if not device:
       device = 'cuda' if torch.cuda.is_available() else 'cpu'
     self.device = torch.device(device)
@@ -26,8 +26,8 @@ class Inference:
     '''
     img, h, w = image_loader(img,self.imsize)
     img = img.to(self.device)
-    pred = self.model(img)[0]
 
+    pred = self.model(img)[0]
     pred = pred.cpu()
     pred = non_max_suppression(pred, conf_thres=self.conf_thres, iou_thres=self.iou_thres)[0] # conf_thres is confidence thresold
 
@@ -56,6 +56,9 @@ class Inference:
         label = f'{classnames[c]}' 
       else:
         label = f'{classnames[c]} {str(p*100)[:5]}%'
+
+      if classnames[c] == 'pedestrian':
+        print('Ped: ', pred[4])
       
       # annotate image
       ctx.annotator.draw(start, end, label, c)

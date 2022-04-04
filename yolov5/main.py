@@ -67,7 +67,7 @@ def run_visdrone():
   run(model, video_path, classnames)
 
 def run_deepsort(model, video_path):
-  inf = Inference(model=model, device='cuda')
+  inf = Inference(model=model, device='cuda', imsize=640)
   classnames = model.names
   cap = cv2.VideoCapture(video_path)
   # load deepsort
@@ -81,9 +81,9 @@ def run_deepsort(model, video_path):
                       )
   # heatmap
   heatmap = HeatMap('image_registration/rua.png')
-  q = Queue()
-  p = Process(target=heatmap.draw_heatmap, args=(q,))
-  p.start()
+  #q = Queue()
+  #p = Process(target=heatmap.draw_heatmap, args=(q,))
+  #p.start()
 
   while cap.isOpened():
     ret, frame = cap.read()
@@ -116,20 +116,20 @@ def run_deepsort(model, video_path):
       # add centers to heatmap
       heatmap.update_points(outputs[:, :4])
       # update queue
-      q.put(heatmap.points_list)
+      #q.put(heatmap.points_list)
 
       confs = confs.unsqueeze(0).numpy().T
       outputs = np.append(np.append(outputs[:, :5], confs, axis=1), outputs[:, 5].reshape(-1, 1), axis=1) # hack to be [bboxes, id, conf, class]
       
 
-    #frame = inf.attach_detections(inf, outputs, frame, classnames, has_id=True)
+    frame = inf.attach_detections(inf, outputs, frame, classnames, has_id=True)
     # draw heatpoints in the frame
     frame = heatmap.draw_center(frame)
 
     cv2.imshow('frame', frame)
     if cv2.waitKey(1) == ord('q'):
       break
-  p.join()
+  #p.join()
   cap.release()
   cv2.destroyAllWindows()
 
@@ -139,7 +139,9 @@ if __name__ == '__main__':
 
   # run deepsort with yolo
   weights = 'weights/visdrone.pt'
+  #weights = 'weights/yolov5l-xs.pt'
 
   model = torch.load(weights)['model'].float()
   model.to(torch.device('cuda'))
+  print('Classes: ', model.nc)
   run_deepsort(model, 'videos/drone2.MP4')
