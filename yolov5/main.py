@@ -143,5 +143,4 @@ if __name__ == '__main__':
 
   model = torch.load(weights)['model'].float()
   model.to(torch.device('cuda'))
-  print('Classes: ', model.nc)
   run_deepsort(model, 'videos/drone2.MP4')
