@@ -8,7 +8,7 @@ from models.yolo import Model
 
 
 class Inference:
-  def __init__(self, model, conf_thres=0.001, iou_thres=0.5, imsize=640, device=None):
+  def __init__(self, model, conf_thres=0.5, iou_thres=0.5, imsize=(640, 640), device=None):
     if not device:
       device = 'cuda' if torch.cuda.is_available() else 'cpu'
     self.device = torch.device(device)
@@ -57,9 +57,6 @@ class Inference:
       else:
         label = f'{classnames[c]} {str(p*100)[:5]}%'
 
-      if classnames[c] == 'pedestrian':
-        print('Ped: ', pred[4])
-      
       # annotate image
       ctx.annotator.draw(start, end, label, c)
 

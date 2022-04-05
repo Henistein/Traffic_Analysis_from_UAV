@@ -1,12 +1,13 @@
-import fiftyone.zoo as foz
+#import fiftyone.zoo as foz
 import torch
 import cv2
 from torch.utils.data import Dataset, DataLoader
-from utils.general import letterbox
+from utils.general import letterbox, image_loader
 from PIL import Image
 import torchvision.transforms as tfs
 from utils.conversions import scale_coords, xywh2xyxy, xywhn2xyxy, xyxy2xywhn
 from utils.metrics import process_batch
+
 
 def load_coco_classnames():
   classnames = [cl.strip() for cl in open('coco_classes.txt').readlines()]
@@ -130,30 +131,25 @@ class VisdroneDataset(Dataset):
 
     # load image 
     img, (h0, w0), (h, w) = self.load_image(img_file)
+
     img, ratio, pad = letterbox(img, self.imsize, auto=False)
-    img = self.transforms(img)
+    img = img.transpose((2, 0, 1))[::-1]
+    img = np.ascontiguousarray(img)
+    img = torch.from_numpy(img)
+
     shapes = (h0, w0), ((h/h0, w/w0), pad)
 
     # load labels
-    f_aux = open(labels_file)
-    labels = []
-    for line in f_aux.readlines():
-      data = line.split(' ')
+    labels = np.loadtxt(labels_file)
 
-      cls = int(data[0])
-      bbox = list(map(float, data[1:]))
+    labels_out = torch.zeros((len(labels), 6))
+    labels_out[:, 1:] = torch.from_numpy(labels)
+    labels = labels_out
 
-      # convert visdrone format to yolo format
-      #bbox = self.convert_box((w0, h0), bbox)
-
-
-      labels.append([0]+[cls]+list(bbox))
-    
-    labels = torch.tensor(labels)
     # normalized xywh to pixel xyxy format
-    #labels[:, 2:] = xywhn2xyxy(labels[:, 2:], ratio[0] * w, ratio[1] * h, padw=pad[0], padh=pad[1])
+    labels[:, 2:] = xywhn2xyxy(labels[:, 2:], ratio[0] * w, ratio[1] * h, padw=pad[0], padh=pad[1])
     # pixel xyxy format to xywh normalized
-    #labels[:, 2:] = xyxy2xywhn(labels[:, 2:], w=img.shape[1], h=img.shape[2], clip=True, eps=1E-3)
+    labels[:, 2:] = xyxy2xywhn(labels[:, 2:], w=img.shape[1], h=img.shape[2], clip=True, eps=1E-3)
 
     return img, labels, img_file, shapes
 
@@ -165,15 +161,16 @@ from tqdm import tqdm
 
 if __name__ == '__main__':
   dataset = VisdroneDataset(
-              imgs_path='/home/henistein/projects/ProjetoLicenciatura/datasets/VisDrone2019-DET-test-dev/images',
-              labels_path='/home/henistein/projects/ProjetoLicenciatura/datasets/VisDrone2019-DET-test-dev/labels'
+              imgs_path='/home/socialab/Henrique/datasets/VisDrone/VisDrone2019-DET-test-dev/images',
+              labels_path='/home/socialab/Henrique/datasets/VisDrone/VisDrone2019-DET-test-dev/labels'
             )
   dataloader = DataLoader(dataset,
                   batch_size=4,
                   pin_memory=True,
                   collate_fn=VisdroneDataset.collate_fn)
 
-  weights = 'weights/visdrone.pt'
+  #weights = 'weights/visdrone5l.pt'
+  weights = 'weights/yolov5l-xs.pt'
   device = torch.device('cuda')
   model = torch.load(weights)['model'].float()
   model.to(device)
@@ -186,11 +183,9 @@ if __name__ == '__main__':
 
   for i,(img,targets,paths,shapes) in enumerate(tqdm(dataloader, total=len(dataloader))):
     img = img.to(device, non_blocking=True)
-    if '/home/socialab/Henrique/datasets/VisDrone/VisDrone2019-DET-test-dev/images/0000006_00159_d_0000001.jpg' in paths:
-      print(paths, img)
-      exit(0)
+    img = img.float() / 255
+
     targets = targets.to(device)
-    #img = img.float() / 255
     nb, _, height, width = img.shape
 
     # Inference
@@ -198,11 +193,10 @@ if __name__ == '__main__':
 
     # NMS 
     targets[:, 2:] *= torch.tensor((width, height, width, height), device=device) # to pixels
-    out = non_max_suppression(out, 0.001, 0.6)
+    out = non_max_suppression(out, 0.5, 0.5)
 
     # Metrics
     for si, pred in enumerate(out):
-      if si == 100: break
       labels = targets[targets[:, 0] == si, 1:]
       nl = len(labels)
       tcls = labels[:, 0].tolist() if nl else []
