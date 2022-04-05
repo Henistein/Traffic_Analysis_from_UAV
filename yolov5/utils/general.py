@@ -157,7 +157,7 @@ def image_loader(im,imsize):
   processes input image for inference 
   '''
   h, w = im.shape[:2]
-  im = letterbox(im, (imsize, imsize), stride=32)[0]
+  im = letterbox(im, (imsize), stride=32)[0]
   im = im.transpose((2, 0, 1))[::-1]
   im = np.ascontiguousarray(im)
   im = torch.from_numpy(im)
