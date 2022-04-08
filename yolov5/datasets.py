@@ -154,18 +154,24 @@ class VisdroneDataset(Dataset):
     return img, labels, img_file, shapes
 
 
-from inference import Inference
+from inference import Inference, Annotator
 from utils.general import non_max_suppression
 from utils.conversions import scale_coords, xywh2xyxy, xywhn2xyxy, xywhn2xyxy
 from tqdm import tqdm
 
 if __name__ == '__main__':
   dataset = VisdroneDataset(
-              imgs_path='/home/socialab/Henrique/datasets/VisDrone/VisDrone2019-DET-test-dev/images',
-              labels_path='/home/socialab/Henrique/datasets/VisDrone/VisDrone2019-DET-test-dev/labels'
+              imgs_path='/home/socialab/Henrique/datasets/rotunda2_images',
+              labels_path='/home/socialab/Henrique/datasets/rotunda2_labels'
             )
+  """
+  dataset = VisdroneDataset(
+              imgs_path='/home/socialab/Henrique/datasets/VisDrone/VisDrone2019-DET-test-dev/images',
+              labels_path='/home/socialab/Henrique/datasets/VisDrone/VisDrone2019-DET-test-dev/labels',
+            )
+  """
   dataloader = DataLoader(dataset,
-                  batch_size=4,
+                  batch_size=1,
                   pin_memory=True,
                   collate_fn=VisdroneDataset.collate_fn)
 
@@ -215,7 +221,19 @@ if __name__ == '__main__':
       if nl:
         tbox = xywh2xyxy(labels[:, 1:5]) # target boxes 
         scale_coords(img[si].shape[1:], tbox, shape, shapes[si][1])  # native-space labels
+
         labelsn = torch.cat((labels[:, 0:1], tbox), 1)
+        # visualize
+        im = cv2.imread(paths[si])
+        class Hack:
+          def __init__(self):
+            pass
+        ctx = Hack()
+        ctx.annotator = Annotator()
+        outimg = Inference.attach_detections(ctx, labelsn[:, 1:], im, ['obj']*1000, is_label=True)
+        cv2.imshow('frame', outimg)
+        cv2.waitKey(0)
+
         correct = process_batch(predn, labelsn, iou)
 
       stats.append((correct.cpu(), pred[:, 4].cpu(), pred[:, 5].cpu(), tcls))  # (correct, conf, pcls, tcls)

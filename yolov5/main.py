@@ -67,7 +67,7 @@ def run_visdrone():
   run(model, video_path, classnames)
 
 def run_deepsort(model, video_path):
-  inf = Inference(model=model, device='cuda', imsize=1280, iou_thres=0.45, conf_thres=0.25)
+  inf = Inference(model=model, device='cuda', imsize=640, iou_thres=0.50, conf_thres=0.50)
   classnames = model.names
   cap = cv2.VideoCapture(video_path)
   # load deepsort
@@ -138,9 +138,9 @@ if __name__ == '__main__':
   #run_coco()
 
   # run deepsort with yolo
-  #weights = 'weights/visdrone.pt'
-  weights = 'weights/yolov5l-xs.pt'
+  weights = 'weights/visdrone.pt'
+  #weights = 'weights/yolov5l-xs.pt'
 
   model = torch.load(weights)['model'].float()
   model.to(torch.device('cuda'))
-  run_deepsort(model, 'videos/drone1.MP4')
+  run_deepsort(model, 'videos/rotunda2.MP4')
