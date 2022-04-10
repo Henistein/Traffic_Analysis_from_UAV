@@ -90,7 +90,7 @@ class Inference:
 
 
   @staticmethod
-  def subjective(stats, **kwargs):
+  def subjective(stats, threshold=0.50, **kwargs):
     """
     stats: stats
     kwargs: detections, labels, img, annotator, classnames
@@ -99,7 +99,7 @@ class Inference:
     kwargs['detections'], kwargs['labels'], kwargs['img'], kwargs['annotator'], kwargs['classnames']
 
     mp, mr, map50, map = Inference.compute_stats(stats)
-    if map50 < 0.5:
+    if map50 < threshold:
       print(f"mAP50: {map50}")
       
       # get detections images and labels image with bb

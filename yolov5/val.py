@@ -1,5 +1,6 @@
 import torch
 import cv2
+import argparse
 from datasets import MyDataset
 from inference import Inference, Annotator
 from utils.general import non_max_suppression
@@ -7,19 +8,18 @@ from utils.conversions import scale_coords, xywh2xyxy
 from utils.metrics import process_batch
 from tqdm import tqdm
 
-if __name__ == '__main__':
-  dataset = MyDataset(
-      imgs_path='/home/henistein/projects/ProjetoLicenciatura/datasets/rotunda2/images',
-      labels_path='/home/henistein/projects/ProjetoLicenciatura/datasets/rotunda2/labels.txt'
-  )
+def parse_opt():
+  parser = argparse.ArgumentParser()
+  parser.add_argument('--path', type=str, default='', help='path to dataset')
+  parser.add_argument('--model', type=str, default='yolov5l.pt', help='model (yolov5l.pt or yolov5l-xs.pt')
+  parser.add_argument('--conf-thres', type=float, default='0.5', help='NMS confident threshold')
+  parser.add_argument('--iou-thres', type=float, default='0.5', help='NMS iou threshold')
+  parser.add_argument('--img-size', type=int, default='640', help='inference img size')
+  parser.add_argument('--subjective', action='store_true', help='show two frames, one with predictions and other with gt labels ')
 
-  #weights = 'weights/visdrone5l.pt'
-  weights = 'weights/yolov5l-xs.pt'
-  device = torch.device('cuda')
-  model = torch.load(weights)['model'].float()
-  model.to(device)
+  return parser.parse_args()
 
-
+def run(dataset, model, conf_thres, iou_thres, subjective, device):
   # validation
   model.eval()
   classnames = model.names
@@ -38,7 +38,7 @@ if __name__ == '__main__':
     out = model(img)[0]
     # NMS 
     targets[:, 1:5] *= torch.tensor((width, height, width, height), device=device) # to pixels
-    out = non_max_suppression(out, 0.5, 0.5)
+    out = non_max_suppression(out, conf_thres=conf_thres, iou_thres=iou_thres)
     # scale bbox to native coordinates
     bbox = targets[:, 1:5].clone()
     nl = len(bbox)
@@ -65,15 +65,14 @@ if __name__ == '__main__':
 
       # Evaluate
       if nl:
+        correct = process_batch(predn.cpu(), labelsn, iou)
         # Filter just the objects on the road
         #predn[:, :4] = Inference.filter_objects_on_road(predn[:, :4], road_area)
         #tbox = Inference.filter_objects_on_road(tbox, road_area)
 
-        # visualize
+      # visualize
+      if subjective:
         im = cv2.imread(paths)
-        outimg = Inference.attach_detections(annotator, lcc, im, classnames, is_label=True)
-
-        correct = process_batch(predn.cpu(), labelsn, iou)
         # Compute 2 imgs, one with gt labels and other with detections labels
         Inference.subjective(
           stats=[(
@@ -95,5 +94,23 @@ if __name__ == '__main__':
   # compute stats
   results = Inference.compute_stats(stats)
   print(results)
+  cv2.destroyAllWindows()
 
-cv2.destroyAllWindows()
+if __name__ == '__main__':
+  opt = parse_opt()
+
+  # dataset path
+  dataset = MyDataset(
+      imgs_path=opt.path + '/images',
+      labels_path=opt.path + '/labels.txt',
+      imsize=opt.img_size
+  )
+  # model
+  weights = 'weights/' + opt.model
+  device = torch.device('cuda')
+  model = torch.load(weights)['model'].float()
+  model.to(device)
+
+  run(dataset, model, opt.conf_thres, opt.iou_thres, opt.subjective, device)
+
+
