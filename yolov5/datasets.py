@@ -1,82 +1,15 @@
 #import fiftyone.zoo as foz
 import torch
 import cv2
-from torch.utils.data import Dataset, DataLoader
-from utils.general import letterbox, image_loader
-from PIL import Image
-import torchvision.transforms as tfs
-from utils.conversions import scale_coords, xywh2xyxy, xywhn2xyxy, xyxy2xywhn
-from utils.metrics import process_batch
-
-
-def load_coco_classnames():
-  classnames = [cl.strip() for cl in open('coco_classes.txt').readlines()]
-  classnames = {k:classnames.index(k) for k in classnames}
-  return classnames
-
-# dataset
-def load_coco_dataset():
-  dataset = foz.load_zoo_dataset(
-    "coco-2017",
-    split="train",
-    max_samples=100,
-    shuffle=False,
-  )
-
-  dataset = list(dataset)
-  return dataset
-
-class SimpleCustomBatch:
-  def __init__(self, data):
-    transposed_data = list(zip(*data))
-    self.inp = torch.stack(transposed_data[0], 0)
-    self.tgt = torch.stack(transposed_data[1], 1)
-  
-  def pin_memory(self):
-    self.inp = self.inp.pin_memory()
-    self.tgt = self.tgt.pin_memory()
-    return self
-
-def collate_wrapper(batch):
-  return SimpleCustomBatch(batch)
+import glob
+import numpy as np
+from pathlib import Path
+from torch.utils.data import Dataset
+from utils.general import letterbox
+from utils.conversions import xywhn2xyxy, xywhn2xyxy, xyxy2xywhn
 
 class MyDataset(Dataset):
-  def __init__(self, dataset):
-    self.dataset = list(dataset)
-    self.classnames = load_coco_classnames()
-    self.transforms = tfs.Compose([
-        tfs.Resize((640, 640)),
-        tfs.ToTensor(),
-    ])
-
-  def __len__(self):
-    return len(self.dataset)
-
-  def __getitem__(self, index):
-    sample = self.dataset[index]
-
-    # get labels
-    labels = [[0.0]+[self.classnames[det['label']]]+det['bounding_box'] for det in sample['ground_truth']['detections']]
-    labels = torch.tensor(labels)
-
-    # get imgs
-    img = Image.open(sample.filepath)
-    # apply transforms
-    img = self.transforms(img)
-
-    return img, labels
-
-
-# dataset for visdrone
-import glob
-#import os
-from pathlib import Path
-import numpy as np
-
-import torchvision.transforms as tfs
-
-class VisdroneDataset(Dataset):
-  def __init__(self, imgs_path, labels_path, samples=None, imsize=640):
+  def __init__(self, imgs_path, labels_path, imsize=640):
     self.imgs_path = imgs_path
     self.labels_path = labels_path
     self.images = glob.glob(imgs_path + "/*")
@@ -159,108 +92,3 @@ class VisdroneDataset(Dataset):
     img = img.unsqueeze(0)
 
     return img, labels_out, img_file, shapes
-
-
-from inference import Inference, Annotator
-from utils.general import non_max_suppression
-from utils.conversions import scale_coords, xywh2xyxy, xywhn2xyxy, xywhn2xyxy
-from tqdm import tqdm
-
-if __name__ == '__main__':
-  dataset = VisdroneDataset(
-              imgs_path='/home/henistein/projects/ProjetoLicenciatura/datasets/rotunda2/images',
-              labels_path='/home/henistein/projects/ProjetoLicenciatura/datasets/rotunda2/labels.txt'
-            )
-  """
-  dataset = VisdroneDataset(
-              imgs_path='/home/socialab/Henrique/datasets/VisDrone/VisDrone2019-DET-test-dev/images',
-              labels_path='/home/socialab/Henrique/datasets/VisDrone/VisDrone2019-DET-test-dev/labels',
-            )
-  """
-  """
-  dataloader = DataLoader(dataset,
-                  batch_size=1,
-                  pin_memory=True,
-                  collate_fn=VisdroneDataset.collate_fn)
-  """
-
-  weights = 'weights/visdrone5l.pt'
-  #weights = 'weights/yolov5l-xs.pt'
-  device = torch.device('cuda')
-  model = torch.load(weights)['model'].float()
-  model.to(device)
-
-
-  # validation
-  model.eval()
-  classnames = model.names
-  stats = []
-  annotator = Annotator()
-  iou = torch.linspace(0.5, 0.95, 10)
-
-  for i,(img,targets,paths,shapes) in enumerate(tqdm(dataset, total=len(dataset))):
-    img = img.to(device, non_blocking=True)
-    img = img.float() / 255
-
-    targets = targets.to(device)
-    nb, _, height, width = img.shape
-
-    # Inference
-    out = model(img)[0]
-
-    # NMS 
-    targets[:, 1:5] *= torch.tensor((width, height, width, height), device=device) # to pixels
-    out = non_max_suppression(out, 0.5, 0.5)
-
-    # Metrics
-    for si, pred in enumerate(out):
-      bbox = targets[:, 1:5].clone()
-      nl = len(bbox)
-      tcls = targets[:, -1].tolist() if nl else []
-      shape = shapes[0]
-
-      if pred is None or len(pred) == 0:
-        if nl:
-          stats.append((torch.zeros(0, iou.numel(), dtype=torch.bool), torch.Tensor(), torch.Tensor(), tcls))
-          continue 
-      
-      # Predictions
-      predn = pred.clone()
-      scale_coords(img[0].shape[1:], predn[:, :4], shape, shapes[1]) # natice-space pred
-
-      # Evaluate
-      if nl:
-        tbox = xywh2xyxy(bbox).cpu() # target boxes 
-        scale_coords(img[0].shape[1:], tbox, shape, shapes[1])  # native-space labels
-
-        cls_torch = torch.tensor(tcls).reshape(-1, 1)
-        labelsn = torch.cat((cls_torch, tbox), 1)
-        # visualize
-        im = cv2.imread(paths)
-        lcc = Inference.labels_conf_cls(labels=labelsn[:, 1:], conf=None, cls=labelsn[:, 0]) # labels conf cls format
-        outimg = Inference.attach_detections(annotator, lcc, im, classnames, is_label=True)
-
-        correct = process_batch(predn.cpu(), labelsn, iou)
-        # Compute 2 imgs, one with gt labels and other with detections labels
-        Inference.subjective(
-          stats=[(
-            correct.cpu(),
-            pred[:, 4].cpu(),
-            pred[:, 5].cpu(),
-            tcls
-          )],
-          detections=predn,
-          labels=lcc,
-          img=im,
-          annotator=annotator,
-          classnames=classnames
-        )
-
-      stats.append((correct.cpu(), pred[:, 4].cpu(), pred[:, 5].cpu(), tcls))  # (correct, conf, pcls, tcls)
-
-
-  # compute stats
-  results = Inference.compute_stats(stats)
-  print(results)
-
-cv2.destroyAllWindows()
