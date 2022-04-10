@@ -80,17 +80,12 @@ class VisdroneDataset(Dataset):
     self.imgs_path = imgs_path
     self.labels_path = labels_path
     self.images = glob.glob(imgs_path + "/*")
-    self.labels = glob.glob(labels_path + "/*")
-    assert len(self.images) == len(self.labels), "Number of labels and images differ"
-    if samples:
-      self.names = [Path(f).stem for f in self.images][:samples]
-    else:
-      self.names = [Path(f).stem for f in self.images]
+    self.labels = np.loadtxt(labels_path, delimiter=',')
+    assert len(self.images) == self.labels[-1, ..., 0], "Number of labels and images differ"
+    self.names = [Path(f).stem for f in self.images]
+    self.names.sort()
     # preprocess settings
     self.imsize = imsize
-    self.transforms = tfs.Compose([
-        tfs.ToTensor(),
-    ])
 
   @staticmethod
   def collate_fn(batch):
@@ -123,12 +118,8 @@ class VisdroneDataset(Dataset):
   
   def __getitem__(self, index):
     name = self.names[index]
-    img_file = glob.glob(self.imgs_path+f"/{name}.*")
-    labels_file = glob.glob(self.labels_path+f"/{name}.*")
-
-    assert len(img_file) == len(labels_file), "There is labels or images with the same name"
-    img_file, labels_file = img_file[0], labels_file[0]
-
+    img_file = glob.glob(self.imgs_path+f"/{name}.*")[0]
+    
     # load image 
     img, (h0, w0), (h, w) = self.load_image(img_file)
 
@@ -140,18 +131,34 @@ class VisdroneDataset(Dataset):
     shapes = (h0, w0), ((h/h0, w/w0), pad)
 
     # load labels
-    labels = np.loadtxt(labels_file)
+    label_id = int(name.split('_')[1]) + 1
+    labels = self.labels[self.labels[:, 0] == label_id]
 
-    labels_out = torch.zeros((len(labels), 6))
-    labels_out[:, 1:] = torch.from_numpy(labels)
-    labels = labels_out
+    # ids [x y w h] cls
+    ids = labels[..., 1]
+    bbox = labels[..., 2:6]
+    cls = labels[..., -2] - 1
+
+    # normalize 
+    bbox[:, 0] = (bbox[:, 0] + bbox[:, 2]/2) / w0
+    bbox[:, 1] = (bbox[:, 1] + bbox[:, 3]/2) / h0
+    bbox[:, 2] /= w0
+    bbox[:, 3] /= h0
 
     # normalized xywh to pixel xyxy format
-    labels[:, 2:] = xywhn2xyxy(labels[:, 2:], ratio[0] * w, ratio[1] * h, padw=pad[0], padh=pad[1])
+    bbox = xywhn2xyxy(bbox, ratio[0] * w, ratio[1] * h, padw=pad[0], padh=pad[1])
     # pixel xyxy format to xywh normalized
-    labels[:, 2:] = xyxy2xywhn(labels[:, 2:], w=img.shape[1], h=img.shape[2], clip=True, eps=1E-3)
+    bbox = xyxy2xywhn(bbox, w=img.shape[1], h=img.shape[2], clip=True, eps=1E-3)
 
-    return img, labels, img_file, shapes
+    # concatenate 
+    labels_out = torch.zeros((len(labels), 6))
+    labels_out[:, 0] = torch.from_numpy(ids)
+    labels_out[:, 1:5] = torch.from_numpy(bbox)
+    labels_out[:, 5] = torch.from_numpy(cls)
+
+    img = img.unsqueeze(0)
+
+    return img, labels_out, img_file, shapes
 
 
 from inference import Inference, Annotator
@@ -161,8 +168,8 @@ from tqdm import tqdm
 
 if __name__ == '__main__':
   dataset = VisdroneDataset(
-              imgs_path='/home/socialab/Henrique/datasets/rotunda2_images',
-              labels_path='/home/socialab/Henrique/datasets/rotunda2_labels'
+              imgs_path='/home/henistein/projects/ProjetoLicenciatura/datasets/rotunda2/images',
+              labels_path='/home/henistein/projects/ProjetoLicenciatura/datasets/rotunda2/labels.txt'
             )
   """
   dataset = VisdroneDataset(
@@ -170,13 +177,15 @@ if __name__ == '__main__':
               labels_path='/home/socialab/Henrique/datasets/VisDrone/VisDrone2019-DET-test-dev/labels',
             )
   """
+  """
   dataloader = DataLoader(dataset,
                   batch_size=1,
                   pin_memory=True,
                   collate_fn=VisdroneDataset.collate_fn)
+  """
 
-  #weights = 'weights/visdrone5l.pt'
-  weights = 'weights/yolov5l-xs.pt'
+  weights = 'weights/visdrone5l.pt'
+  #weights = 'weights/yolov5l-xs.pt'
   device = torch.device('cuda')
   model = torch.load(weights)['model'].float()
   model.to(device)
@@ -184,10 +193,12 @@ if __name__ == '__main__':
 
   # validation
   model.eval()
+  classnames = model.names
   stats = []
+  annotator = Annotator()
   iou = torch.linspace(0.5, 0.95, 10)
 
-  for i,(img,targets,paths,shapes) in enumerate(tqdm(dataloader, total=len(dataloader))):
+  for i,(img,targets,paths,shapes) in enumerate(tqdm(dataset, total=len(dataset))):
     img = img.to(device, non_blocking=True)
     img = img.float() / 255
 
@@ -198,43 +209,52 @@ if __name__ == '__main__':
     out = model(img)[0]
 
     # NMS 
-    targets[:, 2:] *= torch.tensor((width, height, width, height), device=device) # to pixels
+    targets[:, 1:5] *= torch.tensor((width, height, width, height), device=device) # to pixels
     out = non_max_suppression(out, 0.5, 0.5)
 
     # Metrics
     for si, pred in enumerate(out):
-      labels = targets[targets[:, 0] == si, 1:]
-      nl = len(labels)
-      tcls = labels[:, 0].tolist() if nl else []
-      shape = shapes[si][0]
+      bbox = targets[:, 1:5].clone()
+      nl = len(bbox)
+      tcls = targets[:, -1].tolist() if nl else []
+      shape = shapes[0]
 
       if pred is None or len(pred) == 0:
         if nl:
           stats.append((torch.zeros(0, iou.numel(), dtype=torch.bool), torch.Tensor(), torch.Tensor(), tcls))
           continue 
-
+      
       # Predictions
       predn = pred.clone()
-      scale_coords(img[si].shape[1:], predn[:, :4], shape, shapes[si][1]) # natice-space pred
+      scale_coords(img[0].shape[1:], predn[:, :4], shape, shapes[1]) # natice-space pred
 
       # Evaluate
       if nl:
-        tbox = xywh2xyxy(labels[:, 1:5]) # target boxes 
-        scale_coords(img[si].shape[1:], tbox, shape, shapes[si][1])  # native-space labels
+        tbox = xywh2xyxy(bbox).cpu() # target boxes 
+        scale_coords(img[0].shape[1:], tbox, shape, shapes[1])  # native-space labels
 
-        labelsn = torch.cat((labels[:, 0:1], tbox), 1)
+        cls_torch = torch.tensor(tcls).reshape(-1, 1)
+        labelsn = torch.cat((cls_torch, tbox), 1)
         # visualize
-        im = cv2.imread(paths[si])
-        class Hack:
-          def __init__(self):
-            pass
-        ctx = Hack()
-        ctx.annotator = Annotator()
-        outimg = Inference.attach_detections(ctx, labelsn[:, 1:], im, ['obj']*1000, is_label=True)
-        cv2.imshow('frame', outimg)
-        cv2.waitKey(0)
+        im = cv2.imread(paths)
+        lcc = Inference.labels_conf_cls(labels=labelsn[:, 1:], conf=None, cls=labelsn[:, 0]) # labels conf cls format
+        outimg = Inference.attach_detections(annotator, lcc, im, classnames, is_label=True)
 
-        correct = process_batch(predn, labelsn, iou)
+        correct = process_batch(predn.cpu(), labelsn, iou)
+        # Compute 2 imgs, one with gt labels and other with detections labels
+        Inference.subjective(
+          stats=[(
+            correct.cpu(),
+            pred[:, 4].cpu(),
+            pred[:, 5].cpu(),
+            tcls
+          )],
+          detections=predn,
+          labels=lcc,
+          img=im,
+          annotator=annotator,
+          classnames=classnames
+        )
 
       stats.append((correct.cpu(), pred[:, 4].cpu(), pred[:, 5].cpu(), tcls))  # (correct, conf, pcls, tcls)
 
@@ -242,3 +262,5 @@ if __name__ == '__main__':
   # compute stats
   results = Inference.compute_stats(stats)
   print(results)
+
+cv2.destroyAllWindows()

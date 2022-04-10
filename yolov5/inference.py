@@ -35,11 +35,21 @@ class Inference:
       pred = scale_coords(img[0].shape[1:], pred, (h,w))
     
     return pred
+  
+  @staticmethod
+  def labels_conf_cls(labels, conf, cls):
+    lcc = torch.ones((len(labels), 6))
+    lcc[:, :4] = labels
+    if conf is not None:
+      lcc[:, 4] = conf
+    lcc[:, 5] = cls
+    return lcc
                 
   @staticmethod
-  def attach_detections(ctx, detections, img, classnames, has_id=False, is_label=False):
+  def attach_detections(annotator, detections, img, classnames, has_id=False, is_label=False):
+    img = img.copy()
     # add image to annotator
-    ctx.annotator.add_image(img)
+    annotator.add_image(img)
     for pred in detections:
       x1,y1,x2,y2 = map(int, pred[:4])
 
@@ -58,9 +68,9 @@ class Inference:
         label = f'{classnames[c]} {str(p*100)[:5]}%'
 
       # annotate image
-      ctx.annotator.draw(start, end, label, c)
+      annotator.draw(start, end, label, c)
 
-    return ctx.annotator.image
+    return annotator.image
 
 
   @staticmethod
@@ -80,15 +90,21 @@ class Inference:
 
 
   @staticmethod
-  def subjective(*stats, detections, labels, img):
-    mp, mr, map50, map = Inference.compute_stats([stats])
+  def subjective(stats, **kwargs):
+    """
+    stats: stats
+    kwargs: detections, labels, img, annotator, classnames
+    """
+    detections, labels, img, annotator, classnames = \
+    kwargs['detections'], kwargs['labels'], kwargs['img'], kwargs['annotator'], kwargs['classnames']
+
+    mp, mr, map50, map = Inference.compute_stats(stats)
     if map50 < 0.5:
       print(f"mAP50: {map50}")
       
       # get detections images and labels image with bb
-      det_img = Inference.attach_detections(detections, img, ret=True)
-      l = torch.column_stack((labels[:, 1:], labels[:, 0]))
-      lab_img = Inference.attach_detections(l, img, ret=True, is_label=True)
+      det_img = Inference.attach_detections(annotator, detections, img, classnames)
+      lab_img = Inference.attach_detections(annotator, labels, img, classnames, is_label=True)
 
       # concatenate det_img and lab_img vertical
       res = cv2.hconcat([det_img, lab_img])
