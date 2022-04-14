@@ -2,16 +2,16 @@ import numpy as np
 from copy import deepcopy
 from scipy.optimize import linear_sum_assignment
 from sympy import evaluate
-from hota import HOTA
+from utils.hota import HOTA
 
 class Evaluator:
   def __init__(self, gt, dt, num_timesteps, valid_classes, classes_to_eval):
     self.num_timesteps = num_timesteps
-    # filter classes (all_classes - classes_to_eval)
     self.distractor_class_names = []
     for cls in valid_classes:
       if cls not in classes_to_eval:
         self.distractor_class_names.append(cls)
+    self.distractor_class_names = []
     self.valid_classes = valid_classes
     self.class_list = classes_to_eval
     self.class_name_to_class_id = {k:i+1 for i,k in enumerate(self.valid_classes)}
@@ -96,23 +96,26 @@ class Evaluator:
     cls_id = self.class_name_to_class_id[cls]
     distractor_classes = [self.class_name_to_class_id[x] for x in self.distractor_class_names]
     for t in range(self.raw_data['num_timesteps']):
-      # Get all data
-      gt_ids = self.raw_data['gt_ids'][t]
-      gt_dets = self.raw_data['gt_dets'][t]
-      gt_classes = self.raw_data['gt_classes'][t]
-      gt_zero_marked = self.raw_data['gt_extras'][t]['zero_marked']
+      # Only extract revelant dets for this class preproc and eval (cls)
+      gt_class_mask = np.atleast_1d(self.raw_data['gt_classes'][t] == cls_id)
+      gt_class_mask = gt_class_mask.astype(bool)
+      gt_classes = self.raw_data['gt_classes'][t][gt_class_mask]
+      gt_ids = self.raw_data['gt_ids'][t][gt_class_mask]
+      gt_dets = self.raw_data['gt_dets'][t][gt_class_mask]
+      gt_zero_marked = self.raw_data['gt_extras'][t]['zero_marked'][gt_class_mask]
 
-      tracker_ids = self.raw_data['tracker_ids'][t]
-      tracker_dets = self.raw_data['tracker_dets'][t]
-      tracker_classes = self.raw_data['tracker_classes'][t]
-      tracker_confidences = self.raw_data['tracker_confidences'][t]
-      similarity_scores = self.raw_data['similarity_scores'][t]
+      tracker_class_mask = np.atleast_1d(self.raw_data['tracker_classes'][t] == cls_id)
+      tracker_class_mask = tracker_class_mask.astype(bool)
+      tracker_ids = self.raw_data['tracker_ids'][t][tracker_class_mask]
+      tracker_dets = self.raw_data['tracker_dets'][t][tracker_class_mask]
+      similarity_scores = self.raw_data['similarity_scores'][t][gt_class_mask, :][:, tracker_class_mask]
+      tracker_confidences = self.raw_data['tracker_confidences'][t][tracker_class_mask]
 
       # Match tracker and gt dets (with hungarian algorithm) and remove tracker dets which match with gt dets
       # which are labeled as belonging to a distractor class.
       to_remove_tracker = np.array([], int)
+      unmatched_indices = np.arange(tracker_ids.shape[0])
       if gt_ids.shape[0] > 0 and tracker_ids.shape[0] > 0:
-
         matching_scores = similarity_scores.copy()
         matching_scores[matching_scores < 0.5 - np.finfo('float').eps] = 0
         match_rows, match_cols = linear_sum_assignment(-matching_scores)
@@ -122,6 +125,9 @@ class Evaluator:
 
         is_distractor_class = np.isin(gt_classes[match_rows], distractor_classes)
         to_remove_tracker = match_cols[is_distractor_class]
+        unmatched_indices = np.delete(unmatched_indices, match_cols, axis=0)
+        #to_remove_tracker = unmatched_indices
+
 
       # Apply preprocessing to remove all unwanted tracker dets.
       data['tracker_ids'][t] = np.delete(tracker_ids, to_remove_tracker, axis=0)

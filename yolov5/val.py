@@ -1,11 +1,15 @@
 import torch
 import cv2
 import argparse
+import numpy as np
 from datasets import MyDataset
 from inference import Inference, Annotator
+from utils.evaluator import Evaluator
 from utils.general import non_max_suppression
-from utils.conversions import scale_coords, xywh2xyxy
+from utils.conversions import scale_coords, xywh2xyxy, xyxy2xywh
 from utils.metrics import process_batch
+from deep_sort.deep_sort import DeepSort
+from deep_sort.utils.parser import get_config
 from tqdm import tqdm
 
 def parse_opt():
@@ -26,8 +30,22 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device):
   stats = []
   annotator = Annotator()
   iou = torch.linspace(0.5, 0.95, 10)
+  device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+  # load deepsort
+  cfg = get_config()
+  cfg.merge_from_file("deep_sort/configs/deep_sort.yaml")
+  deepsort = DeepSort('osnet_ibn_x1_0_MSMT17',
+                      device,
+                      max_dist=cfg.DEEPSORT.MAX_DIST,
+                      max_iou_distance=cfg.DEEPSORT.MAX_IOU_DISTANCE,
+                      max_age=cfg.DEEPSORT.MAX_AGE, n_init=cfg.DEEPSORT.N_INIT, nn_budget=cfg.DEEPSORT.NN_BUDGET,
+  )
+
+  mot = np.empty((0, 10))
   for i,(img,targets,paths,shapes) in enumerate(tqdm(dataset, total=len(dataset))):
+    if i == 500: break
+    im = cv2.imread(paths)
     img = img.to(device, non_blocking=True)
     img = img.float() / 255
 
@@ -63,6 +81,29 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device):
       predn = pred.clone()
       scale_coords(img[0].shape[1:], predn[:, :4], shape, shapes[1]) # natice-space pred
 
+      xywhs = xyxy2xywh(pred[:, 0:4]).cpu()
+      confs = pred[:, 4].cpu()
+      clss = pred[:, 5].cpu()
+
+      # pass detections to deepsort
+      outputs = deepsort.update(
+        xywhs,
+        confs,
+        clss,
+        im.copy()
+      )
+      
+      if len(outputs) > 0:
+        min_dim = min(outputs.shape[0], confs.shape[0])
+        outputs = outputs[:min_dim]
+        confs = confs[:min_dim].reshape(-1, 1).cpu().numpy()
+        xywh = xyxy2xywh(outputs[:, :4])
+        ids = outputs[:, 4].reshape(-1, 1)
+        cls = outputs[:, 5].reshape(-1, 1) + 1
+        frame_id = np.full((min_dim, 1), i+1)
+        mot_format = np.concatenate((frame_id, ids, xywh, confs, cls), axis=1)
+        mot = np.append(mot, mot_format).reshape(-1, 8)
+
       # Evaluate
       if nl:
         correct = process_batch(predn.cpu(), labelsn, iou)
@@ -72,7 +113,6 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device):
 
       # visualize
       if subjective:
-        im = cv2.imread(paths)
         # Compute 2 imgs, one with gt labels and other with detections labels
         Inference.subjective(
           stats=[(
@@ -89,7 +129,20 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device):
         )
 
       stats.append((correct.cpu(), pred[:, 4].cpu(), pred[:, 5].cpu(), tcls))  # (correct, conf, pcls, tcls)
-
+  evaluator = Evaluator(
+    gt='gt.txt',
+    dt=mot,
+    num_timesteps=len(dataset),
+    valid_classes=model.names,
+    classes_to_eval=['car']#, 'motor', 'bus', 'truck', 'pedestrian']
+  )
+  res = evaluator.run_hota()
+  for cls in res.keys():
+    print(cls)
+    for k in evaluator.hota.float_array_fields:
+      print(k, res[cls][k].mean()*100)
+    for k in evaluator.hota.float_fields:
+      print(k, res[cls][k]*100)
 
   # compute stats
   results = Inference.compute_stats(stats)
