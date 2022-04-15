@@ -9,7 +9,7 @@ class Evaluator:
     self.num_timesteps = num_timesteps
     self.valid_classes = valid_classes
     self.class_list = classes_to_eval
-    self.class_name_to_class_id = {k:i+1 for i,k in enumerate(self.valid_classes)}
+    self.class_name_to_class_id = {k:i for i,k in enumerate(self.valid_classes)}
     self.valid_class_numbers = list(self.class_name_to_class_id.values())
     self.gt = self._load_data(gt, is_gt=True)
     self.dt = self._load_data(dt)

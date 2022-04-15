@@ -1,3 +1,4 @@
+from charset_normalizer import detect
 import torch
 import torch.nn
 import numpy as np
@@ -257,13 +258,19 @@ def process_batch(detections, labels, iouv):
   Return correct predictions matrix. Both sets of boxes are in (x1, y1, x2, y2) format.
   Arguments:
       detections (Array[N, 6]), x1, y1, x2, y2, conf, class
-      labels (Array[M, 5]), class, x1, y1, x2, y2
+      labels (Array[M, 6]), x1, y1, x2, y2, conf, class
   Returns:
       correct (Array[N, 10]), for 10 IoU levels
   """
+  # check instace
+  if not isinstance(labels, torch.Tensor):
+    labels = torch.tensor(labels)
+  if not isinstance(detections, torch.Tensor):
+    detections = torch.tensor(detections)
+
   correct = torch.zeros(detections.shape[0], iouv.shape[0], dtype=torch.bool, device=iouv.device)
-  iou = box_iou(labels[:, 1:], detections[:, :4])
-  x = torch.where((iou >= iouv[0]) & (labels[:, 0:1] == detections[:, 5]))  # IoU above threshold and classes match
+  iou = box_iou(labels[:, :4], detections[:, :4])
+  x = torch.where((iou >= iouv[0]) & (labels[:, 4:5] == detections[:, 5]))  # IoU above threshold and classes match
   if x[0].shape[0]:
     matches = torch.cat((torch.stack(x, 1), iou[x[0], x[1]][:, None]), 1).cpu().numpy()  # [label, detection, iou]
     if x[0].shape[0] > 1:

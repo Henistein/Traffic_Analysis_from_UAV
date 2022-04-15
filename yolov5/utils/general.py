@@ -5,6 +5,42 @@ import numpy as np
 import cv2
 from utils.conversions import xywh2xyxy
 
+
+class DetectionsMatrix:
+  """
+  Manages the detections and labels matrix in MOT format
+  MOT format: [frame_id id x y w h conf cls]
+  """
+  def __init__(self):
+    self.frame_id = 1 # initial frame id
+    self.mot_matrix = np.empty((0, 8))
+    self.current = None
+
+  def update_current(self, ids=None, bboxes=None, confs=None, clss=None):
+    size = len(ids)
+    curr_ids = ids.cpu().numpy().reshape(-1, 1)
+    curr_bboxes = bboxes.cpu().numpy()
+    curr_confs = confs.cpu().numpy().reshape(-1, 1) if confs else np.full((size, 1), 1) # labels
+    curr_clss = clss.cpu().numpy().reshape(-1, 1)
+    curr_frame_id = np.full((size, 1), self.frame_id)
+
+    # create current object
+    self.current = np.concatenate((curr_frame_id, curr_ids, curr_bboxes, curr_confs, curr_clss), axis=1)
+
+    #self.curr_frame_id = self.current[:, 0]
+    #self.curr_ids = self.current[:, 1]
+    #self.curr_bboxes = self.current[:, 2:6]
+    #self.curr_confs = self.current[:, 6]
+    #self.curr_clss = self.current[:, 7]
+  
+  def update_mot_matrix(self):
+    # append
+    self.mot_matrix = np.append(self.mot_matrix, self.current).reshape(-1, 8)
+    # update frame id and reset current
+    self.frame_id += 1
+    self.current = None
+
+
 def non_max_suppression(prediction, conf_thres=0.1, iou_thres=0.6, fast=False, classes=None, agnostic=False):
   """Performs Non-Maximum Suppression (NMS) on inference results
   Returns:

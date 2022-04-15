@@ -5,7 +5,7 @@ import numpy as np
 from datasets import MyDataset
 from inference import Inference, Annotator
 from utils.evaluator import Evaluator
-from utils.general import non_max_suppression
+from utils.general import DetectionsMatrix, non_max_suppression
 from utils.conversions import scale_coords, xywh2xyxy, xyxy2xywh
 from utils.metrics import process_batch
 from deep_sort.deep_sort import DeepSort
@@ -29,6 +29,8 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device):
   classnames = model.names
   stats = []
   annotator = Annotator()
+  labels = DetectionsMatrix() # labels in mot format
+  detections = DetectionsMatrix() # detections in mot format
   iou = torch.linspace(0.5, 0.95, 10)
   device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -45,7 +47,7 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device):
   mot = np.empty((0, 10))
   mot_labels = np.empty((0, 10))
   for i,(img,targets,paths,shapes) in enumerate(tqdm(dataset, total=len(dataset))):
-    if i == 500: break
+    if i == 10: break
     im = cv2.imread(paths)
     img = img.to(device, non_blocking=True)
     img = img.float() / 255
@@ -56,27 +58,34 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device):
     # Inference
     out = model(img)[0]
     # NMS 
+    out = non_max_suppression(out, conf_thres=conf_thres, iou_thres=iou_thres)
     targets[:, 1:5] *= torch.tensor((width, height, width, height), device=device) # to pixels
 
-    out = non_max_suppression(out, conf_thres=conf_thres, iou_thres=iou_thres)
+    labels.update_current(
+      ids=targets[:, 0],
+      bboxes=targets[:, 1:5],
+      confs=None,
+      clss=targets[:, 5]
+    )
+
     # scale bbox to native coordinates
-    bbox = targets[:, 1:5].clone()
-    nl = len(bbox)
+    nl = len(labels.current[:, 2:6])
     shape = shapes[0]
-    tbox = xywh2xyxy(bbox).cpu() # target boxes 
+    tbox = xywh2xyxy(labels.current[:, 2:6]) # change bboxes format
     scale_coords(img[0].shape[1:], tbox, shape, shapes[1])  # native-space labels
+
     # labels in [cls bbox] format
-    tcls = targets[:, -1].tolist() if nl else []
-    cls_torch = torch.tensor(tcls).reshape(-1, 1)
-    labelsn = torch.cat((cls_torch, tbox), 1)
+    #tcls = targets[:, -1].tolist() if nl else []
+    #cls_torch = torch.tensor(tcls).reshape(-1, 1)
+    #labelsn = torch.cat((cls_torch, tbox), 1)
     # labels in [bbox conf cls] format
-    lcc = Inference.labels_conf_cls(labels=labelsn[:, 1:], conf=None, cls=labelsn[:, 0]) # labels conf cls format
+    #lcc = Inference.labels_conf_cls(labels=labelsn[:, 1:], conf=None, cls=labelsn[:, 0]) # labels conf cls format
 
     # Metrics
     for si, pred in enumerate(out):
       if pred is None or len(pred) == 0:
         if nl:
-          stats.append((torch.zeros(0, iou.numel(), dtype=torch.bool), torch.Tensor(), torch.Tensor(), tcls))
+          stats.append((torch.zeros(0, iou.numel(), dtype=torch.bool), torch.Tensor(), torch.Tensor(), labels.current[:, -1]))
           continue 
       
       # Predictions
@@ -101,19 +110,19 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device):
         confs = confs[:min_dim].reshape(-1, 1).cpu().numpy()
         xywh = xyxy2xywh(outputs[:, :4])
         ids = outputs[:, 4].reshape(-1, 1) + 1
-        cls = outputs[:, 5].reshape(-1, 1) + 1
+        cls = outputs[:, 5].reshape(-1, 1)
         frame_id = np.full((min_dim, 1), i+1)
         mot_format = np.concatenate((frame_id, ids, xywh, confs, cls), axis=1)
         mot = np.append(mot, mot_format).reshape(-1, 8)
         # labels
-        targets = targets.detach().cpu().numpy()
-        frame_id = np.full((len(targets), 1), i+1)
-        aux_label = np.concatenate((frame_id, targets[:, :5], np.full((len(targets), 1), 1), targets[:, -1].reshape(-1, 1)+1), axis=1)
-        mot_labels = np.append(mot_labels, aux_label).reshape(-1, 8)
+        #targets = targets.detach().cpu().numpy()
+        #frame_id = np.full((len(targets), 1), i+1)
+        #aux_label = np.concatenate((frame_id, targets[:, :5], np.full((len(targets), 1), 1), targets[:, -1].reshape(-1, 1)+1), axis=1)
+        #mot_labels = np.append(mot_labels, labels.current).reshape(-1, 8)
 
       # Evaluate
       if nl:
-        correct = process_batch(predn.cpu(), labelsn, iou)
+        correct = process_batch(predn.cpu(), np.concatenate((tbox, labels.current[:, 7:8]), axis=1), iou)
         # Filter just the objects on the road
         #predn[:, :4] = Inference.filter_objects_on_road(predn[:, :4], road_area)
         #tbox = Inference.filter_objects_on_road(tbox, road_area)
@@ -126,20 +135,22 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device):
             correct.cpu(),
             pred[:, 4].cpu(),
             pred[:, 5].cpu(),
-            tcls
+            labels.current[:, -1]
           )],
           detections=predn,
-          labels=lcc,
+          labels=labels.current[:, 2:],
           img=im,
           annotator=annotator,
           classnames=classnames
         )
 
-      stats.append((correct.cpu(), pred[:, 4].cpu(), pred[:, 5].cpu(), tcls))  # (correct, conf, pcls, tcls)
+      stats.append((correct.cpu(), pred[:, 4].cpu(), pred[:, 5].cpu(), labels.current[:, -1]))  # (correct, conf, pcls, tcls)
+      labels.update_mot_matrix()
+
   evaluator = Evaluator(
-    gt=mot_labels,
+    gt=labels.mot_matrix,
     dt=mot,
-    num_timesteps=500,
+    num_timesteps=10,
     valid_classes=model.names,
     classes_to_eval=model.names
   )
