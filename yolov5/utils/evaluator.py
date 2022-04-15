@@ -48,6 +48,7 @@ class Evaluator:
         else:
           raw_data['gt_extras'][i] = {'zero_marked': np.atleast_1d(obj[idx, 6]).astype(int)}
       else:
+        i = int(i) - 1
         raw_data['dets'][i] = np.empty((0, 4))
         raw_data['ids'][i] = np.empty(0).astype(int)
         raw_data['classes'][i] = np.empty(0).astype(int)

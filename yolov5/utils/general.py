@@ -17,11 +17,11 @@ class DetectionsMatrix:
     self.current = None
 
   def update_current(self, ids=None, bboxes=None, confs=None, clss=None):
-    size = len(ids)
-    curr_ids = ids.cpu().numpy().reshape(-1, 1)
-    curr_bboxes = bboxes.cpu().numpy()
-    curr_confs = confs.cpu().numpy().reshape(-1, 1) if confs else np.full((size, 1), 1) # labels
-    curr_clss = clss.cpu().numpy().reshape(-1, 1)
+    size = len(clss)
+    curr_ids = ids.cpu().numpy().reshape(-1, 1) if ids is not None else np.empty((size, 1))
+    curr_bboxes = bboxes.cpu().numpy() if bboxes is not None else np.empty((size, 4))
+    curr_confs = confs.cpu().numpy().reshape(-1, 1) if confs is not None else np.full((size, 1), 1) # labels
+    curr_clss = clss.cpu().numpy().reshape(-1, 1) if clss is not None else clss
     curr_frame_id = np.full((size, 1), self.frame_id)
 
     # create current object

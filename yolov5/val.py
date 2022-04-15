@@ -44,9 +44,7 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device):
                       max_age=cfg.DEEPSORT.MAX_AGE, n_init=cfg.DEEPSORT.N_INIT, nn_budget=cfg.DEEPSORT.NN_BUDGET,
   )
 
-  mot = np.empty((0, 10))
   for i,(img,targets,paths,shapes) in enumerate(tqdm(dataset, total=len(dataset))):
-    if i == 10: break
     im = cv2.imread(paths)
     img = img.to(device, non_blocking=True)
     img = img.float() / 255
@@ -79,39 +77,35 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device):
           stats.append((torch.zeros(0, iou.numel(), dtype=torch.bool), torch.Tensor(), torch.Tensor(), labels.current[:, -1]))
           continue 
       
-      # Predictions
-      predn = pred.clone()
-      scale_coords(img[0].shape[1:], predn[:, :4], shapes[0], shapes[1]) # native-space pred
-
-      xywhs = xyxy2xywh(pred[:, 0:4]).cpu()
-      confs = pred[:, 4].cpu()
-      clss = pred[:, 5].cpu()
+      # Predictions in MOT format
+      detections.update_current(
+        bboxes=xyxy2xywh(pred[:, 0:4]),
+        confs=pred[:, 4], # confs
+        clss=pred[:, 5] # clss
+      )
 
       # pass detections to deepsort
       outputs = deepsort.update(
-        xywhs,
-        confs,
-        clss,
+        detections.current[:, 2:6], # xywhs
+        detections.current[:, 6], # confs
+        detections.current[:, 7], # clss
         im.copy()
       )
+
+      # scale bbox to native coordinates, it will be stored in self.scaled_current
+      detections.scale_to_native(img[0].shape[1:], shapes[0], shapes[1])
       
       if len(outputs) > 0:
-        min_dim = min(outputs.shape[0], confs.shape[0])
+        min_dim = min(outputs.shape[0], detections.current.shape[0])
         outputs = outputs[:min_dim]
-        confs = confs[:min_dim].reshape(-1, 1).cpu().numpy()
-        xywh = xyxy2xywh(outputs[:, :4])
-        ids = outputs[:, 4].reshape(-1, 1) + 1
-        cls = outputs[:, 5].reshape(-1, 1)
-        frame_id = np.full((min_dim, 1), i+1)
-        mot_format = np.concatenate((frame_id, ids, xywh, confs, cls), axis=1)
-        mot = np.append(mot, mot_format).reshape(-1, 8)
+        detections.current = detections.current[:min_dim]
+        detections.current[:, 2:6] = xyxy2xywh(outputs[:, :4]) # bboxes
+        detections.current[:, 1] = outputs[:, 4] + 1 # ids
+        detections.update_mot_matrix()
 
       # Evaluate
       if nl:
-        correct = process_batch(predn.cpu(), labels.scaled_current[:, 2:], iou)
-        # Filter just the objects on the road
-        #predn[:, :4] = Inference.filter_objects_on_road(predn[:, :4], road_area)
-        #tbox = Inference.filter_objects_on_road(tbox, road_area)
+        correct = process_batch(detections.scaled_current[:, 2:], labels.scaled_current[:, 2:], iou)
 
       # visualize
       if subjective:
@@ -123,7 +117,7 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device):
             pred[:, 5].cpu(),
             labels.current[:, -1]
           )],
-          detections=predn,
+          detections=detections.scaled_current[:, 2:],
           labels=labels.scaled_current[:, 2:],
           img=im,
           annotator=annotator,
@@ -137,8 +131,8 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device):
 
   evaluator = Evaluator(
     gt=labels.mot_matrix,
-    dt=mot,
-    num_timesteps=10,
+    dt=detections.mot_matrix,
+    num_timesteps=500,
     valid_classes=model.names,
     classes_to_eval=model.names
   )
