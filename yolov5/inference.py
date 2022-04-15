@@ -20,7 +20,7 @@ class Inference:
     self.iou_thres = iou_thres
 
 
-  def get_pred(self, img):
+  def get_pred(self, img, scale=True):
     '''
     returns prediction in numpy array
     '''
@@ -31,9 +31,11 @@ class Inference:
     pred = pred.cpu()
     pred = non_max_suppression(pred, conf_thres=self.conf_thres, iou_thres=self.iou_thres)[0] # conf_thres is confidence thresold
 
-    if pred is not None:
+    if pred is not None and scale:
       pred = scale_coords(img[0].shape[1:], pred, (h,w))
     
+    if not scale: # return (h, w) and pred
+      return (h, w), pred
     return pred
   
   @staticmethod
@@ -47,21 +49,24 @@ class Inference:
                 
   @staticmethod
   def attach_detections(annotator, detections, img, classnames, has_id=False, is_label=False):
+    """
+    detections format: [N][frame_id, id, x, y, x, y, confs, cls]
+    """
     img = img.copy()
     # add image to annotator
     annotator.add_image(img)
     for pred in detections:
-      x1,y1,x2,y2 = map(int, pred[:4])
+      x1,y1,x2,y2 = map(int, pred[2:6])
 
       c = int(pred[-1].item()) # class
       p = pred[-2].item() # confidence (proability)
+      id = int(pred[1])
 
       start = (x1,y1)
       end = (x2,y2)
 
       if has_id:
-        #label = f'{pred[4]} {classnames[c]} {p:.2f}'
-        label = f'{pred[4]}'
+        label = f'{id}'
       elif is_label:
         label = f'{classnames[c]}' 
       else:
@@ -94,6 +99,8 @@ class Inference:
     """
     stats: stats
     kwargs: detections, scaled labels x1y1x2y2, img, annotator, classnames
+    Note:
+      detections format: [frame_id, id, x, y, x, y, confs, cls]
     """
     detections, labels, img, annotator, classnames = \
     kwargs['detections'], kwargs['labels'], kwargs['img'], kwargs['annotator'], kwargs['classnames']
@@ -103,8 +110,8 @@ class Inference:
       print(f"mAP50: {map50}")
       
       # get detections images and labels image with bb
-      det_img = Inference.attach_detections(annotator, detections, img, classnames)
-      lab_img = Inference.attach_detections(annotator, labels, img, classnames, is_label=True)
+      det_img = Inference.attach_detections(annotator, detections, img, classnames, has_id=True)
+      lab_img = Inference.attach_detections(annotator, labels, img, classnames, has_id=True)
 
       # concatenate det_img and lab_img vertical
       res = cv2.hconcat([det_img, lab_img])

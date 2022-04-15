@@ -20,10 +20,11 @@ def parse_opt():
   parser.add_argument('--iou-thres', type=float, default='0.5', help='NMS iou threshold')
   parser.add_argument('--img-size', type=int, default='640', help='inference img size')
   parser.add_argument('--subjective', action='store_true', help='show two frames, one with predictions and other with gt labels ')
+  parser.add_argument('--detector', action='store_true', help='evaluate detector performance (mAP)')
 
   return parser.parse_args()
 
-def run(dataset, model, conf_thres, iou_thres, subjective, device):
+def run(dataset, model, conf_thres, iou_thres, subjective, device, detector=False):
   # validation
   model.eval()
   classnames = model.names
@@ -45,6 +46,7 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device):
   )
 
   for i,(img,targets,paths,shapes) in enumerate(tqdm(dataset, total=len(dataset))):
+    if i == 10: break
     im = cv2.imread(paths)
     img = img.to(device, non_blocking=True)
     img = img.float() / 255
@@ -73,9 +75,9 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device):
     # Metrics
     for si, pred in enumerate(out):
       if pred is None or len(pred) == 0:
-        if nl:
+        if nl and detector:
           stats.append((torch.zeros(0, iou.numel(), dtype=torch.bool), torch.Tensor(), torch.Tensor(), labels.current[:, -1]))
-          continue 
+        continue 
       
       # Predictions in MOT format
       detections.update_current(
@@ -92,8 +94,11 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device):
         im.copy()
       )
 
-      # scale bbox to native coordinates, it will be stored in self.scaled_current
-      detections.scale_to_native(img[0].shape[1:], shapes[0], shapes[1])
+      # Evaluate detector (mAP)
+      if nl and detector:
+        # scale bbox to native coordinates, it will be stored in self.scaled_current
+        detections.scale_to_native(img[0].shape[1:], shapes[0], shapes[1])
+        correct = process_batch(detections.scaled_current[:, 2:], labels.scaled_current[:, 2:], iou)
       
       if len(outputs) > 0:
         min_dim = min(outputs.shape[0], detections.current.shape[0])
@@ -101,38 +106,37 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device):
         detections.current = detections.current[:min_dim]
         detections.current[:, 2:6] = xyxy2xywh(outputs[:, :4]) # bboxes
         detections.current[:, 1] = outputs[:, 4] + 1 # ids
+        detections.scale_to_native(img[0].shape[1:], shapes[0], shapes[1])
         detections.update_mot_matrix()
 
-      # Evaluate
-      if nl:
-        correct = process_batch(detections.scaled_current[:, 2:], labels.scaled_current[:, 2:], iou)
 
-      # visualize
-      if subjective:
-        # Compute 2 imgs, one with gt labels and other with detections labels
-        Inference.subjective(
-          stats=[(
-            correct.cpu(),
-            pred[:, 4].cpu(),
-            pred[:, 5].cpu(),
-            labels.current[:, -1]
-          )],
-          detections=detections.scaled_current[:, 2:],
-          labels=labels.scaled_current[:, 2:],
-          img=im,
-          annotator=annotator,
-          classnames=classnames
-        )
+        # visualize
+        if subjective:
+          # Compute 2 imgs, one with gt labels and other with detections labels
+          Inference.subjective(
+            stats=[(
+              correct.cpu(),
+              pred[:, 4].cpu(),
+              pred[:, 5].cpu(),
+              labels.current[:, -1]
+            )],
+            detections=detections.scaled_current,
+            labels=labels.scaled_current,
+            img=im,
+            annotator=annotator,
+            classnames=classnames
+          )
 
-      # append detection eval stats
-      stats.append((correct.cpu(), pred[:, 4].cpu(), pred[:, 5].cpu(), labels.current[:, -1]))  # (correct, conf, pcls, tcls)
+      # append stats to eval detector
+      if detector:
+        stats.append((correct.cpu(), pred[:, 4].cpu(), pred[:, 5].cpu(), labels.current[:, -1]))  # (correct, conf, pcls, tcls)
       # update mot_matrix with current label
       labels.update_mot_matrix()
 
   evaluator = Evaluator(
     gt=labels.mot_matrix,
     dt=detections.mot_matrix,
-    num_timesteps=500,
+    num_timesteps=10,
     valid_classes=model.names,
     classes_to_eval=model.names
   )
@@ -144,9 +148,10 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device):
     for k in evaluator.hota.float_fields:
       print(k, res[cls][k]*100)
 
-  # compute stats
-  results = Inference.compute_stats(stats)
-  print(results)
+  # compute detector stats
+  if detector:
+    results = Inference.compute_stats(stats)
+    print(results)
   cv2.destroyAllWindows()
 
 if __name__ == '__main__':
@@ -164,6 +169,6 @@ if __name__ == '__main__':
   model = torch.load(weights)['model'].float()
   model.to(device)
 
-  run(dataset, model, opt.conf_thres, opt.iou_thres, opt.subjective, device)
+  run(dataset, model, opt.conf_thres, opt.iou_thres, opt.subjective, device, opt.detector)
 
 
