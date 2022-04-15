@@ -107,8 +107,7 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device, detector=Fals
         detections.current[:, 2:6] = xyxy2xywh(outputs[:, :4]) # bboxes
         detections.current[:, 1] = outputs[:, 4] + 1 # ids
         detections.scale_to_native(img[0].shape[1:], shapes[0], shapes[1])
-        detections.update_mot_matrix()
-
+        detections.update()
 
         # visualize
         if subjective:
@@ -131,7 +130,7 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device, detector=Fals
       if detector:
         stats.append((correct.cpu(), pred[:, 4].cpu(), pred[:, 5].cpu(), labels.current[:, -1]))  # (correct, conf, pcls, tcls)
       # update mot_matrix with current label
-      labels.update_mot_matrix()
+      labels.update()
 
   evaluator = Evaluator(
     gt=labels.mot_matrix,

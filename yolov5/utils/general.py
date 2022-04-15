@@ -33,18 +33,19 @@ class DetectionsMatrix:
     #self.curr_confs = self.current[:, 6]
     #self.curr_clss = self.current[:, 7]
   
-  def scale_to_native(self, img1_shape, img0_shape, ratio_pad):
+  def scale_to_native(self, img1_shape, img0_shape, ratio_pad=None):
     """
     scale bboxes to native coordinates so it can be displayed
     it can be called by self.scaled_current
     """
     self.scaled_current = self.current.copy()
     scaled_box = xywh2xyxy(self.current[:, 2:6]) # change bboxes format
-    self.scaled_current[:, 2:6] = scale_coords(img1_shape, scaled_box, img0_shape, ratio_pad)  # native-space labels
+    self.scaled_current[:, 2:6] = scale_coords(img1_shape, scaled_box, img0_shape, ratio_pad=ratio_pad)  # native-space labels
   
-  def update_mot_matrix(self):
+  def update(self, append=True):
     # append
-    self.mot_matrix = np.append(self.mot_matrix, self.current).reshape(-1, 8)
+    if append:
+      self.mot_matrix = np.append(self.mot_matrix, self.current).reshape(-1, 8)
     # update frame id and reset current
     self.frame_id += 1
     self.current = None
