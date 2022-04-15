@@ -7,11 +7,6 @@ from utils.hota import HOTA
 class Evaluator:
   def __init__(self, gt, dt, num_timesteps, valid_classes, classes_to_eval):
     self.num_timesteps = num_timesteps
-    self.distractor_class_names = []
-    for cls in valid_classes:
-      if cls not in classes_to_eval:
-        self.distractor_class_names.append(cls)
-    self.distractor_class_names = []
     self.valid_classes = valid_classes
     self.class_list = classes_to_eval
     self.class_name_to_class_id = {k:i+1 for i,k in enumerate(self.valid_classes)}
@@ -94,54 +89,26 @@ class Evaluator:
     num_gt_dets = 0
     num_tracker_dets = 0
     cls_id = self.class_name_to_class_id[cls]
-    distractor_classes = [self.class_name_to_class_id[x] for x in self.distractor_class_names]
+
     for t in range(self.raw_data['num_timesteps']):
       # Only extract revelant dets for this class preproc and eval (cls)
       gt_class_mask = np.atleast_1d(self.raw_data['gt_classes'][t] == cls_id)
       gt_class_mask = gt_class_mask.astype(bool)
-      gt_classes = self.raw_data['gt_classes'][t][gt_class_mask]
       gt_ids = self.raw_data['gt_ids'][t][gt_class_mask]
-      gt_dets = self.raw_data['gt_dets'][t][gt_class_mask]
-      gt_zero_marked = self.raw_data['gt_extras'][t]['zero_marked'][gt_class_mask]
+      gt_dets = [self.raw_data['gt_dets'][t][ind] for ind in range(len(gt_class_mask)) if gt_class_mask[ind]]
 
       tracker_class_mask = np.atleast_1d(self.raw_data['tracker_classes'][t] == cls_id)
       tracker_class_mask = tracker_class_mask.astype(bool)
       tracker_ids = self.raw_data['tracker_ids'][t][tracker_class_mask]
-      tracker_dets = self.raw_data['tracker_dets'][t][tracker_class_mask]
+      tracker_dets = [self.raw_data['tracker_dets'][t][ind] for ind in range(len(tracker_class_mask)) if tracker_class_mask[ind]]
       similarity_scores = self.raw_data['similarity_scores'][t][gt_class_mask, :][:, tracker_class_mask]
       tracker_confidences = self.raw_data['tracker_confidences'][t][tracker_class_mask]
 
-      # Match tracker and gt dets (with hungarian algorithm) and remove tracker dets which match with gt dets
-      # which are labeled as belonging to a distractor class.
-      to_remove_tracker = np.array([], int)
-      unmatched_indices = np.arange(tracker_ids.shape[0])
-      if gt_ids.shape[0] > 0 and tracker_ids.shape[0] > 0:
-        matching_scores = similarity_scores.copy()
-        matching_scores[matching_scores < 0.5 - np.finfo('float').eps] = 0
-        match_rows, match_cols = linear_sum_assignment(-matching_scores)
-        actually_matched_mask = matching_scores[match_rows, match_cols] > 0 + np.finfo('float').eps
-        match_rows = match_rows[actually_matched_mask]
-        match_cols = match_cols[actually_matched_mask]
-
-        is_distractor_class = np.isin(gt_classes[match_rows], distractor_classes)
-        to_remove_tracker = match_cols[is_distractor_class]
-        unmatched_indices = np.delete(unmatched_indices, match_cols, axis=0)
-        #to_remove_tracker = unmatched_indices
-
-
-      # Apply preprocessing to remove all unwanted tracker dets.
-      data['tracker_ids'][t] = np.delete(tracker_ids, to_remove_tracker, axis=0)
-      data['tracker_dets'][t] = np.delete(tracker_dets, to_remove_tracker, axis=0)
-      data['tracker_confidences'][t] = np.delete(tracker_confidences, to_remove_tracker, axis=0)
-      similarity_scores = np.delete(similarity_scores, to_remove_tracker, axis=1)
-
-      # Remove gt detections marked as to remove (zero marked), and also remove gt detections not in pedestrian
-      # class (not applicable for MOT15)
-      gt_to_keep_mask = (np.not_equal(gt_zero_marked, 0)) & \
-                        (np.equal(gt_classes, cls_id))
-      data['gt_ids'][t] = gt_ids[gt_to_keep_mask]
-      data['gt_dets'][t] = gt_dets[gt_to_keep_mask, :]
-      data['similarity_scores'][t] = similarity_scores[gt_to_keep_mask]
+      data['tracker_ids'][t] = tracker_ids
+      data['tracker_dets'][t] = tracker_dets
+      data['gt_ids'][t] = gt_ids
+      data['gt_dets'][t] = gt_dets
+      data['similarity_scores'][t] = similarity_scores
 
       unique_gt_ids += list(np.unique(data['gt_ids'][t]))
       unique_tracker_ids += list(np.unique(data['tracker_ids'][t]))

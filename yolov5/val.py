@@ -43,6 +43,7 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device):
   )
 
   mot = np.empty((0, 10))
+  mot_labels = np.empty((0, 10))
   for i,(img,targets,paths,shapes) in enumerate(tqdm(dataset, total=len(dataset))):
     if i == 500: break
     im = cv2.imread(paths)
@@ -56,6 +57,7 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device):
     out = model(img)[0]
     # NMS 
     targets[:, 1:5] *= torch.tensor((width, height, width, height), device=device) # to pixels
+
     out = non_max_suppression(out, conf_thres=conf_thres, iou_thres=iou_thres)
     # scale bbox to native coordinates
     bbox = targets[:, 1:5].clone()
@@ -79,7 +81,7 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device):
       
       # Predictions
       predn = pred.clone()
-      scale_coords(img[0].shape[1:], predn[:, :4], shape, shapes[1]) # natice-space pred
+      scale_coords(img[0].shape[1:], predn[:, :4], shape, shapes[1]) # native-space pred
 
       xywhs = xyxy2xywh(pred[:, 0:4]).cpu()
       confs = pred[:, 4].cpu()
@@ -98,11 +100,16 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device):
         outputs = outputs[:min_dim]
         confs = confs[:min_dim].reshape(-1, 1).cpu().numpy()
         xywh = xyxy2xywh(outputs[:, :4])
-        ids = outputs[:, 4].reshape(-1, 1)
+        ids = outputs[:, 4].reshape(-1, 1) + 1
         cls = outputs[:, 5].reshape(-1, 1) + 1
         frame_id = np.full((min_dim, 1), i+1)
         mot_format = np.concatenate((frame_id, ids, xywh, confs, cls), axis=1)
         mot = np.append(mot, mot_format).reshape(-1, 8)
+        # labels
+        targets = targets.detach().cpu().numpy()
+        frame_id = np.full((len(targets), 1), i+1)
+        aux_label = np.concatenate((frame_id, targets[:, :5], np.full((len(targets), 1), 1), targets[:, -1].reshape(-1, 1)+1), axis=1)
+        mot_labels = np.append(mot_labels, aux_label).reshape(-1, 8)
 
       # Evaluate
       if nl:
@@ -130,11 +137,11 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device):
 
       stats.append((correct.cpu(), pred[:, 4].cpu(), pred[:, 5].cpu(), tcls))  # (correct, conf, pcls, tcls)
   evaluator = Evaluator(
-    gt='gt.txt',
+    gt=mot_labels,
     dt=mot,
-    num_timesteps=len(dataset),
+    num_timesteps=500,
     valid_classes=model.names,
-    classes_to_eval=['car']#, 'motor', 'bus', 'truck', 'pedestrian']
+    classes_to_eval=model.names
   )
   res = evaluator.run_hota()
   for cls in res.keys():
