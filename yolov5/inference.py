@@ -93,7 +93,7 @@ class Inference:
   def subjective(stats, threshold=0.50, **kwargs):
     """
     stats: stats
-    kwargs: detections, labels, img, annotator, classnames
+    kwargs: detections, scaled labels x1y1x2y2, img, annotator, classnames
     """
     detections, labels, img, annotator, classnames = \
     kwargs['detections'], kwargs['labels'], kwargs['img'], kwargs['annotator'], kwargs['classnames']

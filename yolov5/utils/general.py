@@ -3,7 +3,7 @@ import time
 import torchvision
 import numpy as np
 import cv2
-from utils.conversions import xywh2xyxy
+from utils.conversions import xywh2xyxy, scale_coords
 
 
 class DetectionsMatrix:
@@ -32,6 +32,15 @@ class DetectionsMatrix:
     #self.curr_bboxes = self.current[:, 2:6]
     #self.curr_confs = self.current[:, 6]
     #self.curr_clss = self.current[:, 7]
+  
+  def scale_to_native(self, img1_shape, img0_shape, ratio_pad):
+    """
+    scale bboxes to native coordinates so it can be displayed
+    it can be called by self.scaled_current
+    """
+    self.scaled_current = self.current.copy()
+    scaled_box = xywh2xyxy(self.current[:, 2:6]) # change bboxes format
+    self.scaled_current[:, 2:6] = scale_coords(img1_shape, scaled_box, img0_shape, ratio_pad)  # native-space labels
   
   def update_mot_matrix(self):
     # append
