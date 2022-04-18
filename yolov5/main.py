@@ -26,7 +26,7 @@ def run_deepsort(model, video_path):
                       max_age=cfg.DEEPSORT.MAX_AGE, n_init=cfg.DEEPSORT.N_INIT, nn_budget=cfg.DEEPSORT.NN_BUDGET,
   )
   # heatmap
-  heatmap = HeatMap('image_registration/rua.png')
+  heatmap = HeatMap('image_registration/map_rotunda.png')
   annotator = Annotator()
   detections = DetectionsMatrix()
   #q = Queue()
@@ -77,7 +77,7 @@ def run_deepsort(model, video_path):
       frame = inf.attach_detections(annotator, detections.current, frame, classnames, has_id=True)
       detections.update(append=False)
       # draw heatpoints in the frame
-      frame = heatmap.draw_center(frame)
+      frame = heatmap.draw_heatpoints(frame)
 
     cv2.imshow('frame', frame)
     if cv2.waitKey(1) == ord('q'):

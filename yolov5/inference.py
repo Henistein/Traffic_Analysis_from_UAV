@@ -38,14 +38,6 @@ class Inference:
       return (h, w), pred
     return pred
   
-  @staticmethod
-  def labels_conf_cls(labels, conf, cls):
-    lcc = torch.ones((len(labels), 6))
-    lcc[:, :4] = labels
-    if conf is not None:
-      lcc[:, 4] = conf
-    lcc[:, 5] = cls
-    return lcc
                 
   @staticmethod
   def attach_detections(annotator, detections, img, classnames, has_id=False, is_label=False):
