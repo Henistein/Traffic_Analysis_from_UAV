@@ -30,8 +30,9 @@
 int main(int argc, char *argv[])
 {
 
-	string infile_name;
+	string infile_name = argv[1];
 
+  /*
 	for (size_t index = 0; index < argc; index++)
 	{
 		if (0 == strcmp("-v", argv[index])) {
@@ -39,6 +40,7 @@ int main(int argc, char *argv[])
 				infile_name = argv[index];
 		}
 	}
+  */
 
 
 	/************************************************************************/
@@ -66,7 +68,10 @@ int main(int argc, char *argv[])
 
 	// Init frame number and exit condition
 	int frame_num = 1;
+  int fd, img_size;
 	bool bRun = true;
+  const char *myfifo = "fifo";
+  mkfifo(myfifo, 0666);
 
 	/************************************************************************/
 	/*  The main process loop                                               */
@@ -116,15 +121,21 @@ int main(int argc, char *argv[])
 			bitwise_or(frame, mask, frame);
 		}	
 
-		imshow(window_name, frame);
-		waitKey(10);
+    img_size = frame.total() * frame.elemSize();
+    fd = open(myfifo, O_WRONLY); 
+    write(fd, frame.data, img_size);
+    close(fd);
+		//imshow(window_name, frame);
+		//waitKey(10);
 		
 		//KeyBoard Process
-		int k = waitKey(1);
+		//int k = waitKey(1);
+    /*
 		if ('q' == k)
 		{
 			break;
 		}
+    */
 		++frame_num;
 
 	}

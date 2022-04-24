@@ -23,7 +23,6 @@
 #define	_MCDWRAPPER_CPP_
 
 #include <time.h>
-#include <winsock.h>
 
 #include <ctime>
 #include <cstring>

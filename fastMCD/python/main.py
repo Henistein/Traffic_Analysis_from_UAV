@@ -17,7 +17,10 @@ while(cap.isOpened()):
     else:
         mask = mcd.run(gray)
     frame[mask > 0, 2] = 255
+    #contours, hierarchy = cv2.findContours(frame, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    #print(contours)
     cv2.imshow('frame', frame)
+    #cv2.imshow('frame', mask)
     if cv2.waitKey(10) & 0xFF == ord('q'):
         break
 

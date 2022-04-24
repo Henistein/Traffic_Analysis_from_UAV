@@ -24,5 +24,9 @@
 
 #include	<opencv2/core.hpp>
 #include	<opencv2/highgui.hpp>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #include	"MCDWrapper.hpp"
