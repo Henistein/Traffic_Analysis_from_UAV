@@ -1,5 +1,6 @@
 # vim: expandtab:ts=4:sw=4
-
+import numpy as np
+from .kalman_filter import KalmanFilter
 
 class TrackState:
     """
@@ -63,24 +64,31 @@ class Track:
 
     """
 
-    def __init__(self, mean, covariance, track_id, class_id, n_init, max_age,
-                 feature=None):
-        self.mean = mean
-        self.covariance = covariance
+    def __init__(self, detection, track_id, class_id, n_init, max_age,
+                 feature=None, score=None):
         self.track_id = track_id
         self.class_id = class_id
         self.hits = 1
         self.age = 1
         self.time_since_update = 0
-        self.yolo_bbox = [0, 0, 0, 0]
 
         self.state = TrackState.Tentative
         self.features = []
         if feature is not None:
+            feature /= np.linalg.norm(feature)
             self.features.append(feature)
+
+        self.scores = []
+        if score is not None:
+            self.scores.append(score)
 
         self._n_init = n_init
         self._max_age = max_age
+
+        self.kf = KalmanFilter()
+
+        self.mean, self.covariance = self.kf.initiate(detection)
+
 
     def to_tlwh(self):
         """Get current position in bounding box format `(top left x, top left y,
@@ -98,63 +106,66 @@ class Track:
         return ret
 
     def to_tlbr(self):
-        """Get kf estimated current position in bounding box format `(min x, miny, max x,
+        """Get current position in bounding box format `(min x, miny, max x,
         max y)`.
 
         Returns
         -------
         ndarray
-            The predicted kf bounding box.
+            The bounding box.
 
         """
         ret = self.to_tlwh()
         ret[2:] = ret[:2] + ret[2:]
         return ret
 
-    def get_yolo_pred(self):
-        """Get yolo prediction`.
-
-        Returns
-        -------
-        ndarray
-            The yolo bounding box.
-
+    def predict(self):
+        """Propagate the state distribution to the current time step using a
+        Kalman filter prediction step.
         """
-        return self.yolo_bbox
-
-    def increment_age(self):
+        self.mean, self.covariance = self.kf.predict(self.mean, self.covariance)
         self.age += 1
         self.time_since_update += 1
 
-    def predict(self, kf):
-        """Propagate the state distribution to the current time step using a
-        Kalman filter prediction step.
+    @staticmethod
+    def get_matrix(dict_frame_matrix, frame):
+        eye = np.eye(3)
+        matrix = dict_frame_matrix[frame]
+        dist = np.linalg.norm(eye - matrix)
+        if dist < 100:
+            return matrix
+        else:
+            return eye
 
-        Parameters
-        ----------
-        kf : kalman_filter.KalmanFilter
-            The Kalman filter.
+    def camera_update(self, video, frame):
+        dict_frame_matrix = opt.ecc[video]
+        frame = str(int(frame))
+        if frame in dict_frame_matrix:
+            matrix = self.get_matrix(dict_frame_matrix, frame)
+            x1, y1, x2, y2 = self.to_tlbr()
+            x1_, y1_, _ = matrix @ np.array([x1, y1, 1]).T
+            x2_, y2_, _ = matrix @ np.array([x2, y2, 1]).T
+            w, h = x2_ - x1_, y2_ - y1_
+            cx, cy = x1_ + w / 2, y1_ + h / 2
+            self.mean[:4] = [cx, cy, w / h, h]
 
-        """
-        self.mean, self.covariance = kf.predict(self.mean, self.covariance)
-        self.increment_age()
-
-    def update(self, kf, detection, class_id):
+    def update(self, detection, class_id):
         """Perform Kalman filter measurement update step and update the feature
         cache.
 
         Parameters
         ----------
-        kf : kalman_filter.KalmanFilter
-            The Kalman filter.
         detection : Detection
             The associated detection.
 
         """
-        self.yolo_bbox = detection
-        self.mean, self.covariance = kf.update(
-            self.mean, self.covariance, detection.to_xyah())
-        self.features.append(detection.feature)
+        self.mean, self.covariance = self.kf.update(self.mean, self.covariance, detection.to_xyah(), detection.confidence)
+
+        feature = detection.feature / np.linalg.norm(detection.feature)
+        smooth_feat = 0.9 * self.features[-1] + (1 - 0.9) * feature
+        smooth_feat /= np.linalg.norm(smooth_feat)
+        self.features = [smooth_feat]
+        #self.features.append(feature)
         self.class_id = class_id
 
         self.hits += 1

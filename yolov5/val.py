@@ -46,7 +46,6 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device, detector=Fals
   )
 
   for i,(img,targets,paths,shapes) in enumerate(tqdm(dataset, total=len(dataset))):
-    if i == 10: break
     im = cv2.imread(paths)
     img = img.to(device, non_blocking=True)
     img = img.float() / 255
@@ -106,6 +105,7 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device, detector=Fals
         detections.current = detections.current[:min_dim]
         detections.current[:, 2:6] = xyxy2xywh(outputs[:, :4]) # bboxes
         detections.current[:, 1] = outputs[:, 4] + 1 # ids
+        detections.current[:, 7] = outputs[:, -1]
         detections.scale_to_native(img[0].shape[1:], shapes[0], shapes[1])
         detections.update()
 
@@ -135,7 +135,7 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device, detector=Fals
   evaluator = Evaluator(
     gt=labels.mot_matrix,
     dt=detections.mot_matrix,
-    num_timesteps=10,
+    num_timesteps=500,
     valid_classes=model.names,
     classes_to_eval=model.names
   )
@@ -169,5 +169,3 @@ if __name__ == '__main__':
   model.to(device)
 
   run(dataset, model, opt.conf_thres, opt.iou_thres, opt.subjective, device, opt.detector)
-
-

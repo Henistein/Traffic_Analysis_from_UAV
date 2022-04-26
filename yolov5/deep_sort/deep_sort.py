@@ -20,7 +20,7 @@ __all__ = ['DeepSort']
 
 
 class DeepSort(object):
-    def __init__(self, model, device, max_dist=0.2, max_iou_distance=0.7, max_age=70, n_init=3, nn_budget=100):
+    def __init__(self, model, device, max_dist=0.45, max_iou_distance=0.7, max_age=70, n_init=3, nn_budget=1):
         if is_model_in_factory(model):
             # download the model
             model_path = join('deep_sort/deep/checkpoint', model + '.pth')

@@ -1,9 +1,9 @@
 # vim: expandtab:ts=4:sw=4
 from __future__ import absolute_import
 import numpy as np
-from scipy.optimize import linear_sum_assignment
+#from sklearn.utils.linear_assignment_ import linear_assignment
+from scipy.optimize import linear_sum_assignment as linear_assignment
 from . import kalman_filter
-
 
 INFTY_COST = 1e+5
 
@@ -12,6 +12,7 @@ def min_cost_matching(
         distance_metric, max_distance, tracks, detections, track_indices=None,
         detection_indices=None):
     """Solve linear assignment problem.
+
     Parameters
     ----------
     distance_metric : Callable[List[Track], List[Detection], List[int], List[int]) -> ndarray
@@ -33,6 +34,7 @@ def min_cost_matching(
     detection_indices : List[int]
         List of detection indices that maps columns in `cost_matrix` to
         detections in `detections` (see description above).
+
     Returns
     -------
     (List[(int, int)], List[int], List[int])
@@ -40,6 +42,7 @@ def min_cost_matching(
         * A list of matched track and detection indices.
         * A list of unmatched track indices.
         * A list of unmatched detection indices.
+
     """
     if track_indices is None:
         track_indices = np.arange(len(tracks))
@@ -52,7 +55,10 @@ def min_cost_matching(
     cost_matrix = distance_metric(
         tracks, detections, track_indices, detection_indices)
     cost_matrix[cost_matrix > max_distance] = max_distance + 1e-5
-    row_indices, col_indices = linear_sum_assignment(cost_matrix)
+
+    cost_matrix_ = cost_matrix.copy()
+
+    row_indices, col_indices = linear_assignment(cost_matrix_)
 
     matches, unmatched_tracks, unmatched_detections = [], [], []
     for col, detection_idx in enumerate(detection_indices):
@@ -76,6 +82,7 @@ def matching_cascade(
         distance_metric, max_distance, cascade_depth, tracks, detections,
         track_indices=None, detection_indices=None):
     """Run matching cascade.
+
     Parameters
     ----------
     distance_metric : Callable[List[Track], List[Detection], List[int], List[int]) -> ndarray
@@ -100,6 +107,7 @@ def matching_cascade(
         List of detection indices that maps columns in `cost_matrix` to
         detections in `detections` (see description above). Defaults to all
         detections.
+
     Returns
     -------
     (List[(int, int)], List[int], List[int])
@@ -107,6 +115,7 @@ def matching_cascade(
         * A list of matched track and detection indices.
         * A list of unmatched track indices.
         * A list of unmatched detection indices.
+
     """
     if track_indices is None:
         track_indices = list(range(len(tracks)))
@@ -115,34 +124,27 @@ def matching_cascade(
 
     unmatched_detections = detection_indices
     matches = []
-    for level in range(cascade_depth):
-        if len(unmatched_detections) == 0:  # No detections left
-            break
+    track_indices_l = [
+        k for k in track_indices
+        # if tracks[k].time_since_update == 1 + level
+    ]
+    matches_l, _, unmatched_detections = \
+    min_cost_matching(
+        distance_metric, max_distance, tracks, detections,
+        track_indices_l, unmatched_detections)
+    matches += matches_l
 
-        track_indices_l = [
-            k for k in track_indices
-            if tracks[k].time_since_update == 1 + level
-        ]
-        if len(track_indices_l) == 0:  # Nothing to match at this level
-            continue
-
-        matches_l, _, unmatched_detections = \
-            min_cost_matching(
-                distance_metric, max_distance, tracks, detections,
-                track_indices_l, unmatched_detections)
-        matches += matches_l
     unmatched_tracks = list(set(track_indices) - set(k for k, _ in matches))
     return matches, unmatched_tracks, unmatched_detections
 
-
 def gate_cost_matrix(
-        kf, cost_matrix, tracks, detections, track_indices, detection_indices,
+        cost_matrix, tracks, detections, track_indices, detection_indices,
         gated_cost=INFTY_COST, only_position=False):
     """Invalidate infeasible entries in cost matrix based on the state
     distributions obtained by Kalman filtering.
+
     Parameters
     ----------
-    kf : The Kalman filter.
     cost_matrix : ndarray
         The NxM dimensional cost matrix, where N is the number of track indices
         and M is the number of detection indices, such that entry (i, j) is the
@@ -164,18 +166,20 @@ def gate_cost_matrix(
     only_position : Optional[bool]
         If True, only the x, y position of the state distribution is considered
         during gating. Defaults to False.
+
     Returns
     -------
     ndarray
         Returns the modified cost matrix.
+
     """
-    gating_dim = 2 if only_position else 4
-    gating_threshold = kalman_filter.chi2inv95[gating_dim]
-    measurements = np.asarray(
-        [detections[i].to_xyah() for i in detection_indices])
+    assert not only_position
+    gating_threshold = kalman_filter.chi2inv95[4]
+    measurements = np.asarray([detections[i].to_xyah() for i in detection_indices])
     for row, track_idx in enumerate(track_indices):
         track = tracks[track_idx]
-        gating_distance = kf.gating_distance(
-            track.mean, track.covariance, measurements, only_position)
+        gating_distance = track.kf.gating_distance(track.mean, track.covariance, measurements, only_position)
         cost_matrix[row, gating_distance > gating_threshold] = gated_cost
+        cost_matrix[row] = 0.98 * cost_matrix[row] + (1 - 0.98) *  gating_distance
+
     return cost_matrix

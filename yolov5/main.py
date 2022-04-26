@@ -13,7 +13,7 @@ from heatmap import HeatMap
 from utils.conversions import scale_coords
 
 def run_deepsort(model, video_path):
-  inf = Inference(model=model, device='cuda', imsize=640, iou_thres=0.50, conf_thres=0.50)
+  inf = Inference(model=model, device='cuda', imsize=1920, iou_thres=0.50, conf_thres=0.50)
   classnames = model.names
   cap = cv2.VideoCapture(video_path)
   # load deepsort
@@ -26,7 +26,7 @@ def run_deepsort(model, video_path):
                       max_age=cfg.DEEPSORT.MAX_AGE, n_init=cfg.DEEPSORT.N_INIT, nn_budget=cfg.DEEPSORT.NN_BUDGET,
   )
   # heatmap
-  heatmap = HeatMap('image_registration/map_rotunda.png')
+  #heatmap = HeatMap('image_registration/map_rotunda.png')
   annotator = Annotator()
   detections = DetectionsMatrix()
   #q = Queue()
@@ -37,7 +37,6 @@ def run_deepsort(model, video_path):
   while cap.isOpened():
     ret, frame = cap.read()
     frame_id += 1
-    if frame_id == 501: break
 
     if not ret:
       print("Can't receive frame (stream end?). Exiting ...")
@@ -45,6 +44,7 @@ def run_deepsort(model, video_path):
 
     # inference
     pred = inf.get_pred(frame)
+    if pred is None: continue
 
     # Predictions in MOT format
     detections.update_current(
@@ -70,14 +70,14 @@ def run_deepsort(model, video_path):
       detections.current[:, 1] = outputs[:, 4] + 1 # ids
 
       # add centers to heatmap
-      heatmap.update_points(detections.current[:, 2:6])
+      #heatmap.update_points(detections.current[:, 2:6])
       # update queue
       #q.put(heatmap.points_list)
 
       frame = inf.attach_detections(annotator, detections.current, frame, classnames, has_id=True)
       detections.update(append=False)
       # draw heatpoints in the frame
-      frame = heatmap.draw_heatpoints(frame)
+      #frame = heatmap.draw_heatpoints(frame)
 
     cv2.imshow('frame', frame)
     if cv2.waitKey(1) == ord('q'):
@@ -92,9 +92,9 @@ if __name__ == '__main__':
   #run_coco()
 
   # run deepsort with yolo
-  weights = 'weights/visdrone.pt'
-  #weights = 'weights/yolov5l-xs.pt'
+  #weights = 'weights/visdrone.pt'
+  weights = 'weights/yolov5l-xs.pt'
 
   model = torch.load(weights)['model'].float()
   model.to(torch.device('cuda'))
-  run_deepsort(model, 'videos/rotunda.MP4')
+  run_deepsort(model, 'videos/non_stationary.mp4')
