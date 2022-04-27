@@ -19,12 +19,8 @@ def run_deepsort(model, video_path):
   # load deepsort
   cfg = get_config()
   cfg.merge_from_file("deep_sort/configs/deep_sort.yaml")
-  deepsort = DeepSort('osnet_ibn_x1_0_MSMT17',
-                      inf.device,
-                      max_dist=cfg.DEEPSORT.MAX_DIST,
-                      max_iou_distance=cfg.DEEPSORT.MAX_IOU_DISTANCE,
-                      max_age=cfg.DEEPSORT.MAX_AGE, n_init=cfg.DEEPSORT.N_INIT, nn_budget=cfg.DEEPSORT.NN_BUDGET,
-  )
+  deepsort = DeepSort('osnet_ibn_x1_0_MSMT17', inf.device, strongsort=True)
+
   # heatmap
   #heatmap = HeatMap('image_registration/map_rotunda.png')
   annotator = Annotator()

@@ -1,7 +1,6 @@
 import numpy as np
 from copy import deepcopy
 from scipy.optimize import linear_sum_assignment
-from sympy import evaluate
 from utils.hota import HOTA
 
 class Evaluator:

@@ -34,11 +34,12 @@ class Tracker:
 
     """
 
-    def __init__(self, metric, max_iou_distance=0.7, max_age=30, n_init=3):
+    def __init__(self, metric, max_iou_distance=0.7, max_age=30, n_init=3, strongsort=False):
         self.metric = metric
         self.max_iou_distance = max_iou_distance
         self.max_age = max_age
         self.n_init = n_init
+        self.strongsort = strongsort
 
         self.tracks = []
         self._next_id = 1
@@ -85,6 +86,8 @@ class Tracker:
                 continue
             features += track.features
             targets += [track.track_id for _ in track.features]
+            if not self.strongsort: # if not EMA
+              track.features = []
         self.metric.partial_fit(
             np.asarray(features), np.asarray(targets), active_targets)
 
@@ -96,7 +99,7 @@ class Tracker:
             cost_matrix = self.metric.distance(features, targets)
             cost_matrix = linear_assignment.gate_cost_matrix(
                 cost_matrix, tracks, dets, track_indices,
-                detection_indices)
+                detection_indices, strongsort=self.strongsort)
 
             return cost_matrix
 
@@ -110,7 +113,7 @@ class Tracker:
         matches_a, unmatched_tracks_a, unmatched_detections = \
             linear_assignment.matching_cascade(
                 gated_metric, self.metric.matching_threshold, self.max_age,
-                self.tracks, detections, confirmed_tracks)
+                self.tracks, detections, confirmed_tracks, strongsort=self.strongsort)
 
         # Associate remaining tracks together with unconfirmed tracks using IOU.
         iou_track_candidates = unconfirmed_tracks + [
@@ -131,5 +134,5 @@ class Tracker:
     def _initiate_track(self, detection, class_id):
         self.tracks.append(Track(
             detection.to_xyah(), self._next_id, class_id, self.n_init, self.max_age,
-            detection.feature, detection.confidence))
+            detection.feature, detection.confidence, strongsort=self.strongsort))
         self._next_id += 1

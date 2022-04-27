@@ -20,7 +20,18 @@ __all__ = ['DeepSort']
 
 
 class DeepSort(object):
-    def __init__(self, model, device, max_dist=0.45, max_iou_distance=0.7, max_age=70, n_init=3, nn_budget=1):
+    def __init__(self, model, device, strongsort=False):
+        # config
+        if strongsort:
+          MAX_COSINE_DISTANCE = 0.35 # 0.4 BoT + 0.05 MC
+          NN_BUDGET = 1 # EMA
+        else:
+          MAX_COSINE_DISTANCE = 0.2
+          NN_BUDGET = 100
+        MAX_IOU_DISTANCE = 0.7
+        MAX_AGE = 70
+        N_INIT = 1
+
         if is_model_in_factory(model):
             # download the model
             model_path = join('deep_sort/deep/checkpoint', model + '.pth')
@@ -47,11 +58,10 @@ class DeepSort(object):
                 show_supported_models()
                 exit()
 
-        max_cosine_distance = max_dist
         metric = NearestNeighborDistanceMetric(
-            "euclidean", max_cosine_distance, nn_budget)
-        self.tracker = Tracker(
-            metric, max_iou_distance=max_iou_distance, max_age=max_age, n_init=n_init)
+            "euclidean", MAX_COSINE_DISTANCE, NN_BUDGET)
+
+        self.tracker = Tracker(metric, max_iou_distance=MAX_IOU_DISTANCE, max_age=MAX_AGE, n_init=N_INIT, strongsort=strongsort)
 
     def update(self, bbox_xywh, confidences, classes, ori_img, use_yolo_preds=False):
         self.height, self.width = ori_img.shape[:2]

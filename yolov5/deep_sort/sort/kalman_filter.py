@@ -36,7 +36,8 @@ class KalmanFilter(object):
 
     """
 
-    def __init__(self):
+    def __init__(self, strongsort=False):
+        self.strongsort = strongsort
         ndim, dt = 4, 1.
 
         # Create Kalman filter model matrices.
@@ -146,7 +147,8 @@ class KalmanFilter(object):
             1e-1,
             self._std_weight_position * mean[3]]
 
-        std = [(1 - confidence) * x for x in std]
+        if self.strongsort: # NSA
+          std = [(1 - confidence) * x for x in std]
         innovation_cov = np.diag(np.square(std))
 
         mean = np.dot(self._update_mat, mean)

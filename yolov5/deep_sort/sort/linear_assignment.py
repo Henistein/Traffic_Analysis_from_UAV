@@ -80,7 +80,7 @@ def min_cost_matching(
 
 def matching_cascade(
         distance_metric, max_distance, cascade_depth, tracks, detections,
-        track_indices=None, detection_indices=None):
+        track_indices=None, detection_indices=None, strongsort=False):
     """Run matching cascade.
 
     Parameters
@@ -124,22 +124,40 @@ def matching_cascade(
 
     unmatched_detections = detection_indices
     matches = []
-    track_indices_l = [
-        k for k in track_indices
-        # if tracks[k].time_since_update == 1 + level
-    ]
-    matches_l, _, unmatched_detections = \
-    min_cost_matching(
-        distance_metric, max_distance, tracks, detections,
-        track_indices_l, unmatched_detections)
-    matches += matches_l
+    if strongsort: #woC
+      track_indices_l = [
+          k for k in track_indices
+          # if tracks[k].time_since_update == 1 + level
+      ]
+      matches_l, _, unmatched_detections = \
+      min_cost_matching(
+          distance_metric, max_distance, tracks, detections,
+          track_indices_l, unmatched_detections)
+      matches += matches_l
+    else:
+      for level in range(cascade_depth):
+            if len(unmatched_detections) == 0:  # No detections left
+                break
+
+            track_indices_l = [
+                k for k in track_indices
+                if tracks[k].time_since_update == 1 + level
+            ]
+            if len(track_indices_l) == 0:  # Nothing to match at this level
+                continue
+
+            matches_l, _, unmatched_detections = \
+                min_cost_matching(
+                    distance_metric, max_distance, tracks, detections,
+                    track_indices_l, unmatched_detections)
+            matches += matches_l
 
     unmatched_tracks = list(set(track_indices) - set(k for k, _ in matches))
     return matches, unmatched_tracks, unmatched_detections
 
 def gate_cost_matrix(
         cost_matrix, tracks, detections, track_indices, detection_indices,
-        gated_cost=INFTY_COST, only_position=False):
+        gated_cost=INFTY_COST, only_position=False, strongsort=False):
     """Invalidate infeasible entries in cost matrix based on the state
     distributions obtained by Kalman filtering.
 
@@ -180,6 +198,7 @@ def gate_cost_matrix(
         track = tracks[track_idx]
         gating_distance = track.kf.gating_distance(track.mean, track.covariance, measurements, only_position)
         cost_matrix[row, gating_distance > gating_threshold] = gated_cost
-        cost_matrix[row] = 0.98 * cost_matrix[row] + (1 - 0.98) *  gating_distance
+        if strongsort: # MC
+          cost_matrix[row] = 0.98 * cost_matrix[row] + (1 - 0.98) *  gating_distance
 
     return cost_matrix

@@ -65,12 +65,13 @@ class Track:
     """
 
     def __init__(self, detection, track_id, class_id, n_init, max_age,
-                 feature=None, score=None):
+                 feature=None, score=None, strongsort=False):
         self.track_id = track_id
         self.class_id = class_id
         self.hits = 1
         self.age = 1
         self.time_since_update = 0
+        self.strongsort = strongsort 
 
         self.state = TrackState.Tentative
         self.features = []
@@ -85,7 +86,7 @@ class Track:
         self._n_init = n_init
         self._max_age = max_age
 
-        self.kf = KalmanFilter()
+        self.kf = KalmanFilter(strongsort)
 
         self.mean, self.covariance = self.kf.initiate(detection)
 
@@ -162,10 +163,12 @@ class Track:
         self.mean, self.covariance = self.kf.update(self.mean, self.covariance, detection.to_xyah(), detection.confidence)
 
         feature = detection.feature / np.linalg.norm(detection.feature)
-        smooth_feat = 0.9 * self.features[-1] + (1 - 0.9) * feature
-        smooth_feat /= np.linalg.norm(smooth_feat)
-        self.features = [smooth_feat]
-        #self.features.append(feature)
+        if self.strongsort: # EMA
+          smooth_feat = 0.9 * self.features[-1] + (1 - 0.9) * feature
+          smooth_feat /= np.linalg.norm(smooth_feat)
+          self.features = [smooth_feat]
+        else:
+          self.features.append(feature)
         self.class_id = class_id
 
         self.hits += 1

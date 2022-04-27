@@ -21,10 +21,11 @@ def parse_opt():
   parser.add_argument('--img-size', type=int, default='640', help='inference img size')
   parser.add_argument('--subjective', action='store_true', help='show two frames, one with predictions and other with gt labels ')
   parser.add_argument('--detector', action='store_true', help='evaluate detector performance (mAP)')
+  parser.add_argument('--strongsort', action='store_true', help='run strongsort tracker')
 
   return parser.parse_args()
 
-def run(dataset, model, conf_thres, iou_thres, subjective, device, detector=False):
+def run(dataset, model, conf_thres, iou_thres, subjective, device, detector=False, strongsort=False):
   # validation
   model.eval()
   classnames = model.names
@@ -36,14 +37,8 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device, detector=Fals
   device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
   # load deepsort
-  cfg = get_config()
-  cfg.merge_from_file("deep_sort/configs/deep_sort.yaml")
-  deepsort = DeepSort('osnet_ibn_x1_0_MSMT17',
-                      device,
-                      max_dist=cfg.DEEPSORT.MAX_DIST,
-                      max_iou_distance=cfg.DEEPSORT.MAX_IOU_DISTANCE,
-                      max_age=cfg.DEEPSORT.MAX_AGE, n_init=cfg.DEEPSORT.N_INIT, nn_budget=cfg.DEEPSORT.NN_BUDGET,
-  )
+  deepsort = DeepSort('osnet_ibn_x1_0_MSMT17', device, strongsort=strongsort)
+  print('Tracker: '+'StrongSort' if strongsort else 'DeepSort')
 
   for i,(img,targets,paths,shapes) in enumerate(tqdm(dataset, total=len(dataset))):
     im = cv2.imread(paths)
@@ -168,4 +163,4 @@ if __name__ == '__main__':
   model = torch.load(weights)['model'].float()
   model.to(device)
 
-  run(dataset, model, opt.conf_thres, opt.iou_thres, opt.subjective, device, opt.detector)
+  run(dataset, model, opt.conf_thres, opt.iou_thres, opt.subjective, device, opt.detector, opt.strongsort)
