@@ -17,8 +17,6 @@ def run_deepsort(model, video_path):
   classnames = model.names
   cap = cv2.VideoCapture(video_path)
   # load deepsort
-  cfg = get_config()
-  cfg.merge_from_file("deep_sort/configs/deep_sort.yaml")
   deepsort = DeepSort('osnet_ibn_x1_0_MSMT17', inf.device, strongsort=True)
 
   # heatmap
@@ -93,4 +91,4 @@ if __name__ == '__main__':
 
   model = torch.load(weights)['model'].float()
   model.to(torch.device('cuda'))
-  run_deepsort(model, 'videos/non_stationary.mp4')
+  run_deepsort(model, 'videos/rotunda2.MP4')
