@@ -2,7 +2,7 @@ import torch
 import cv2
 import numpy as np
 from utils.general import non_max_suppression, letterbox, image_loader
-from utils.metrics import ConfusionMatrix, process_batch, ap_per_class
+from utils.metrics import process_batch, ap_per_class
 from utils.conversions import coco2xyxy, scale_coords, normyolo2xyxy, clip_coords
 from models.yolo import Model
 

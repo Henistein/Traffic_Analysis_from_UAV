@@ -3,7 +3,7 @@ import numpy as np
 import cv2 
 from models.yolo import Model
 from multiprocessing import Process, Queue
-from utils.conversions import xyxy2xywh
+from utils.conversions import xyxy2xywh, xywh2xyxy
 from utils.general import DetectionsMatrix
 from deep_sort.deep_sort import DeepSort
 from deep_sort.utils.parser import get_config
@@ -11,6 +11,8 @@ from deep_sort.utils.parser import get_config
 from inference import Inference, Annotator
 from heatmap import HeatMap
 from utils.conversions import scale_coords
+from utils.metrics import box_iou
+from fastmcd.MCDWrapper import MCDWrapper
 
 def run_deepsort(model, video_path):
   inf = Inference(model=model, device='cuda', imsize=1920, iou_thres=0.50, conf_thres=0.50)
@@ -23,10 +25,12 @@ def run_deepsort(model, video_path):
   #heatmap = HeatMap('image_registration/map_rotunda.png')
   annotator = Annotator()
   detections = DetectionsMatrix()
+  mcd = MCDWrapper()
   #q = Queue()
   #p = Process(target=heatmap.draw_heatmap, args=(q,))
   #p.start()
 
+  isFirst = True
   frame_id = 0 
   while cap.isOpened():
     ret, frame = cap.read()
@@ -35,6 +39,17 @@ def run_deepsort(model, video_path):
     if not ret:
       print("Can't receive frame (stream end?). Exiting ...")
       break
+
+    # Background Subtraction
+    gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+    mask = np.zeros(gray.shape, np.uint8)
+    if isFirst:
+      mcd.init(gray)
+      isFirst = False
+    else:
+      mask = mcd.run(gray)
+
+    contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
     # inference
     pred = inf.get_pred(frame)
@@ -68,6 +83,23 @@ def run_deepsort(model, video_path):
       # update queue
       #q.put(heatmap.points_list)
 
+      # Filter just the moving objects
+      frame[mask > 0, 2] = 255
+      bs_bboxes = []
+      for cnt in contours:
+        area = cv2.contourArea(cnt)
+        # threshold
+        if area > 10:
+          x,y,w,h = cv2.boundingRect(cnt)
+          bs_bboxes.append([x,y,w,h])
+
+      if len(bs_bboxes) == 0: continue
+      bs_bboxes = xywh2xyxy(torch.tensor(bs_bboxes))
+      det_bboxes = torch.tensor(detections.current[:, 2:6])
+      iou_matrix = box_iou(det_bboxes, bs_bboxes)
+      detections.current = detections.current[iou_matrix.sum(axis=1)>0]
+        
+
       frame = inf.attach_detections(annotator, detections.current, frame, classnames, has_id=True)
       detections.update(append=False)
       # draw heatpoints in the frame
@@ -91,4 +123,4 @@ if __name__ == '__main__':
 
   model = torch.load(weights)['model'].float()
   model.to(torch.device('cuda'))
-  run_deepsort(model, 'videos/rotunda2.MP4')
+  run_deepsort(model, 'videos/rotunda.MP4')
