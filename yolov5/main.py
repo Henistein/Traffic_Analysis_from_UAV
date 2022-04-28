@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import cv2 
+from tqdm import tqdm
 from models.yolo import Model
 from multiprocessing import Process, Queue
 from utils.conversions import xyxy2xywh, xywh2xyxy
@@ -13,6 +14,7 @@ from heatmap import HeatMap
 from utils.conversions import scale_coords
 from utils.metrics import box_iou
 from fastmcd.MCDWrapper import MCDWrapper
+from counter import Box
 
 def run_deepsort(model, video_path):
   inf = Inference(model=model, device='cuda', imsize=1920, iou_thres=0.50, conf_thres=0.50)
@@ -26,15 +28,26 @@ def run_deepsort(model, video_path):
   annotator = Annotator()
   detections = DetectionsMatrix()
   mcd = MCDWrapper()
+  box_counter = Box((229, 307), (231, 411))
   #q = Queue()
   #p = Process(target=heatmap.draw_heatmap, args=(q,))
   #p.start()
+  video_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+  fps = int(cap.get(cv2.CAP_PROP_FPS))
+  time_length = int(video_frames / fps)
+  #cap.set(1, (1600 /(time_length*fps)))
+  #cap.set(cv2.CAP_PROP_POS_MSEC, 56000)
+
+  fourcc = cv2.VideoWriter_fourcc(*'XVID')
+  video = cv2.VideoWriter('output.mp4', fourcc, fps, (1280, 720))
 
   isFirst = True
   frame_id = 0 
-  while cap.isOpened():
+  pbar=tqdm(cap.isOpened(), total=video_frames)
+  while pbar:
     ret, frame = cap.read()
     frame_id += 1
+
 
     if not ret:
       print("Can't receive frame (stream end?). Exiting ...")
@@ -84,32 +97,49 @@ def run_deepsort(model, video_path):
       #q.put(heatmap.points_list)
 
       # Filter just the moving objects
-      frame[mask > 0, 2] = 255
-      bs_bboxes = []
-      for cnt in contours:
-        area = cv2.contourArea(cnt)
-        # threshold
-        if area > 10:
-          x,y,w,h = cv2.boundingRect(cnt)
-          bs_bboxes.append([x,y,w,h])
+      if True:
+        frame[mask > 0, 2] = 255
+        bs_bboxes = []
+        for cnt in contours:
+          area = cv2.contourArea(cnt)
+          # threshold
+          if area > 0:
+            x,y,w,h = cv2.boundingRect(cnt)
+            bs_bboxes.append([x,y,w,h])
 
-      if len(bs_bboxes) == 0: continue
-      bs_bboxes = xywh2xyxy(torch.tensor(bs_bboxes))
-      det_bboxes = torch.tensor(detections.current[:, 2:6])
-      iou_matrix = box_iou(det_bboxes, bs_bboxes)
-      detections.current = detections.current[iou_matrix.sum(axis=1)>0]
+        if len(bs_bboxes) == 0: continue
+        bs_bboxes = xywh2xyxy(torch.tensor(bs_bboxes))
+        det_bboxes = torch.tensor(detections.current[:, 2:6])
+        iou_matrix = box_iou(det_bboxes, bs_bboxes)
+        detections.current = detections.current[iou_matrix.sum(axis=1)>0]
+        if len(detections.current.shape) == 1:
+          detections.current = detections.current.reshape(1, -1) 
+
+      for det_boxes in detections.current[:, 2:6]:
+        if box_counter.overlap(det_boxes[:2], det_boxes[2:]):
+                box_counter.frame_countdown -= 1
+                if box_counter.frame_countdown <= 0:
+                    box_counter.counter += 1
+                    print(box_counter.counter)
+                box_counter.frame_countdown = 10
         
-
       frame = inf.attach_detections(annotator, detections.current, frame, classnames, has_id=True)
       detections.update(append=False)
       # draw heatpoints in the frame
       #frame = heatmap.draw_heatpoints(frame)
 
+      pbar.update(1)
+
+    # Draw counter
+    frame = cv2.rectangle(frame,(229,307),(231,411),(0,255,0),2)
+
+    video.write(frame)
     cv2.imshow('frame', frame)
     if cv2.waitKey(1) == ord('q'):
       break
 
   #p.join()
+  video.release()
   cap.release()
   cv2.destroyAllWindows()
 
@@ -123,4 +153,5 @@ if __name__ == '__main__':
 
   model = torch.load(weights)['model'].float()
   model.to(torch.device('cuda'))
-  run_deepsort(model, 'videos/rotunda.MP4')
+  run_deepsort(model, 'videos/rotunda2.MP4')
+  #run_deepsort(model, 'videos/non_stationary.mp4')
