@@ -1,7 +1,5 @@
 import torch
 import cv2
-import argparse
-import numpy as np
 from datasets import MyDataset
 from inference import Inference, Annotator
 from utils.evaluator import Evaluator
@@ -9,23 +7,10 @@ from utils.general import DetectionsMatrix, non_max_suppression
 from utils.conversions import scale_coords, xywh2xyxy, xyxy2xywh
 from utils.metrics import process_batch
 from deep_sort.deep_sort import DeepSort
-from deep_sort.utils.parser import get_config
+from opts import OPTS
 from tqdm import tqdm
 
-def parse_opt():
-  parser = argparse.ArgumentParser()
-  parser.add_argument('--path', type=str, default='', help='path to dataset')
-  parser.add_argument('--model', type=str, default='yolov5l.pt', help='model (yolov5l.pt or yolov5l-xs.pt')
-  parser.add_argument('--conf-thres', type=float, default=0.5, help='NMS confident threshold')
-  parser.add_argument('--iou-thres', type=float, default=0.5, help='NMS iou threshold')
-  parser.add_argument('--img-size', type=int, default=640, help='inference img size')
-  parser.add_argument('--subjective', action='store_true', help='show two frames, one with predictions and other with gt labels ')
-  parser.add_argument('--detector', action='store_true', help='evaluate detector performance (mAP)')
-  parser.add_argument('--strongsort', action='store_true', help='run strongsort tracker')
-
-  return parser.parse_args()
-
-def run(dataset, model, conf_thres, iou_thres, subjective, device, detector=False, strongsort=False):
+def run(dataset, model, opt, device):
   # validation
   model.eval()
   classnames = model.names
@@ -37,8 +22,8 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device, detector=Fals
   device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
   # load deepsort
-  deepsort = DeepSort('osnet_ibn_x1_0_MSMT17', device, strongsort=strongsort)
-  print('Tracker: '+'StrongSort' if strongsort else 'DeepSort')
+  deepsort = DeepSort('osnet_ibn_x1_0_MSMT17', device, strongsort=opt.strongsort)
+  print('Tracker: '+'StrongSort' if opt.strongsort else 'DeepSort')
 
   for i,(img,targets,paths,shapes) in enumerate(tqdm(dataset, total=len(dataset))):
     im = cv2.imread(paths)
@@ -51,9 +36,9 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device, detector=Fals
     out = model(img)[0]
 
     # NMS 
-    pred = non_max_suppression(out, conf_thres=conf_thres, iou_thres=iou_thres)[0]
+    pred = non_max_suppression(out, conf_thres=opt.conf_thres, iou_thres=opt.iou_thres)[0]
     if pred is None or len(pred) == 0:
-      if detector:
+      if opt.detector:
         stats.append((torch.zeros(0, iou.numel(), dtype=torch.bool), torch.Tensor(), torch.Tensor(), labels.current[:, -1]))
       continue 
 
@@ -84,7 +69,7 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device, detector=Fals
     )
 
     # Evaluate detector (mAP)
-    if detector:
+    if opt.detector:
       correct = process_batch(xywh2xyxy(detections.current[:, 2:]), labels.current[:, 2:], iou)
     
     if len(outputs) > 0:
@@ -96,7 +81,7 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device, detector=Fals
       detections.current[:, 7] = outputs[:, -1]
 
       # visualize
-      if subjective:
+      if opt.subjective:
         # Compute 2 imgs, one with gt labels and other with detections labels
         Inference.subjective(
           stats=[(
@@ -113,7 +98,7 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device, detector=Fals
         )
 
     # append stats to eval detector
-    if detector:
+    if opt.detector:
       stats.append((correct.cpu(), pred[:, 4].cpu(), pred[:, 5].cpu(), labels.current[:, -1]))  # (correct, conf, pcls, tcls)
 
     # update mot_matrix
@@ -123,7 +108,7 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device, detector=Fals
   evaluator = Evaluator(
     gt=labels.mot_matrix,
     dt=detections.mot_matrix,
-    num_timesteps=500,
+    num_timesteps=len(dataset),
     valid_classes=model.names,
     classes_to_eval=model.names
   )
@@ -136,13 +121,14 @@ def run(dataset, model, conf_thres, iou_thres, subjective, device, detector=Fals
       print(k, res[cls][k]*100)
 
   # compute detector stats
-  if detector:
+  if opt.detector:
     results = Inference.compute_stats(stats)
     print(results)
   cv2.destroyAllWindows()
 
 if __name__ == '__main__':
-  opt = parse_opt()
+
+  opt = OPTS.val_args()
 
   # dataset path
   dataset = MyDataset(
@@ -156,4 +142,4 @@ if __name__ == '__main__':
   model = torch.load(weights)['model'].float()
   model.to(device)
 
-  run(dataset, model, opt.conf_thres, opt.iou_thres, opt.subjective, device, opt.detector, opt.strongsort)
+  run(dataset, model, opt, device)

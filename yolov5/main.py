@@ -2,24 +2,36 @@ import torch
 import numpy as np
 import cv2 
 from tqdm import tqdm
-from models.yolo import Model
-from multiprocessing import Process, Queue
+from opts import OPTS
 from utils.conversions import xyxy2xywh, xywh2xyxy
 from utils.general import DetectionsMatrix
 from deep_sort.deep_sort import DeepSort
-from deep_sort.utils.parser import get_config
 
 from inference import Inference, Annotator
 from heatmap import HeatMap
-from utils.conversions import scale_coords
 from utils.metrics import box_iou
 from fastmcd.MCDWrapper import MCDWrapper
 from counter import Box
 
-def run_deepsort(model, video_path):
-  inf = Inference(model=model, device='cuda', imsize=1920, iou_thres=0.50, conf_thres=0.50)
+class Video:
+  def __init__(self, video_path, start_from=None, video_out=False):
+    self.cap = cv2.VideoCapture(video_path)
+    self.video_frames = self.cap.get(cv2.CAP_PROP_FRAME_COUNT)
+    self.fps = int(self.cap.get(cv2.CAP_PROP_FPS))
+    self.time_length = int(self.video_frames/self.fps)
+    self.width = int(self.cap.get(cv2. CAP_PROP_FRAME_WIDTH))
+    self.height = int(self.cap.get(cv2. CAP_PROP_FRAME_HEIGHT))
+    self.video_out = video_out
+
+    if start_from:
+      self.cap.set(cv2.CAP_PROP_POS_MSEC, start_from)
+    if video_out:
+      fourcc = cv2.VideoWriter_fourcc(*'XVID')
+      self.writer = cv2.VideoWriter('output.mp4', fourcc, self.fps, (self.width, self.height))
+
+def run_deepsort(model, opt):
+  inf = Inference(model=model, device='cuda', imsize=opt.img_size, iou_thres=opt.iou_thres, conf_thres=opt.conf_thres)
   classnames = model.names
-  cap = cv2.VideoCapture(video_path)
   # load deepsort
   deepsort = DeepSort('osnet_ibn_x1_0_MSMT17', inf.device, strongsort=True)
 
@@ -28,32 +40,25 @@ def run_deepsort(model, video_path):
   annotator = Annotator()
   detections = DetectionsMatrix()
   mcd = MCDWrapper()
-  box_counter = Box((229, 307), (231, 411))
+  video = Video(video_path=opt.path, start_from=opt.start_from, video_out=opt.video_out)
+  #box_counter = Box((229, 307), (231, 411))
   #q = Queue()
   #p = Process(target=heatmap.draw_heatmap, args=(q,))
   #p.start()
-  video_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
-  fps = int(cap.get(cv2.CAP_PROP_FPS))
-  time_length = int(video_frames / fps)
-  #cap.set(1, (1600 /(time_length*fps)))
-  #cap.set(cv2.CAP_PROP_POS_MSEC, 56000)
-
-  fourcc = cv2.VideoWriter_fourcc(*'XVID')
-  video = cv2.VideoWriter('output.mp4', fourcc, fps, (1280, 720))
 
   isFirst = True
   frame_id = 0 
-  pbar=tqdm(cap.isOpened(), total=video_frames)
+  pbar=tqdm(video.cap.isOpened(), total=video.video_frames)
   while pbar:
-    ret, frame = cap.read()
+    ret, frame = video.cap.read()
     frame_id += 1
-
 
     if not ret:
       print("Can't receive frame (stream end?). Exiting ...")
       break
 
     # Background Subtraction
+    """
     gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
     mask = np.zeros(gray.shape, np.uint8)
     if isFirst:
@@ -61,8 +66,8 @@ def run_deepsort(model, video_path):
       isFirst = False
     else:
       mask = mcd.run(gray)
-
     contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    """
 
     # inference
     pred = inf.get_pred(frame)
@@ -97,7 +102,7 @@ def run_deepsort(model, video_path):
       #q.put(heatmap.points_list)
 
       # Filter just the moving objects
-      if True:
+      if False:
         frame[mask > 0, 2] = 255
         bs_bboxes = []
         for cnt in contours:
@@ -110,18 +115,12 @@ def run_deepsort(model, video_path):
         if len(bs_bboxes) == 0: continue
         bs_bboxes = xywh2xyxy(torch.tensor(bs_bboxes))
         det_bboxes = torch.tensor(detections.current[:, 2:6])
-        iou_matrix = box_iou(det_bboxes, bs_bboxes)
+        iou_matrix = box_iou(det_bboxes, bs_bboxes).numpy()
         detections.current = detections.current[iou_matrix.sum(axis=1)>0]
+        if detections.current.shape[0] == 0: continue
         if len(detections.current.shape) == 1:
           detections.current = detections.current.reshape(1, -1) 
 
-      for det_boxes in detections.current[:, 2:6]:
-        if box_counter.overlap(det_boxes[:2], det_boxes[2:]):
-                box_counter.frame_countdown -= 1
-                if box_counter.frame_countdown <= 0:
-                    box_counter.counter += 1
-                    print(box_counter.counter)
-                box_counter.frame_countdown = 10
         
       frame = inf.attach_detections(annotator, detections.current, frame, classnames, has_id=True)
       detections.update(append=False)
@@ -131,27 +130,28 @@ def run_deepsort(model, video_path):
       pbar.update(1)
 
     # Draw counter
-    frame = cv2.rectangle(frame,(229,307),(231,411),(0,255,0),2)
+    #frame = cv2.rectangle(frame,(229,307),(231,411),(0,255,0),2)
 
-    video.write(frame)
-    cv2.imshow('frame', frame)
-    if cv2.waitKey(1) == ord('q'):
-      break
+    if opt.video_out:
+      video.writer.write(frame)
+    
+    if not opt.no_show:
+      cv2.imshow('frame', frame)
+      if cv2.waitKey(1) == ord('q'):
+        break
 
   #p.join()
-  video.release()
-  cap.release()
+  if opt.video_out:
+    video.writer.release()
+  video.cap.release()
   cv2.destroyAllWindows()
 
 if __name__ == '__main__':
-  #run_visdrone()
-  #run_coco()
+  opt = OPTS.main_args()
 
   # run deepsort with yolo
-  #weights = 'weights/visdrone.pt'
-  weights = 'weights/yolov5l-xs.pt'
-
+  weights = 'weights/'+opt.model
   model = torch.load(weights)['model'].float()
   model.to(torch.device('cuda'))
-  run_deepsort(model, 'videos/rotunda2.MP4')
-  #run_deepsort(model, 'videos/non_stationary.mp4')
+
+  run_deepsort(model, opt)
