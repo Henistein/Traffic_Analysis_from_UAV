@@ -27,5 +27,6 @@ class OPTS:
     parser.add_argument('--video-out', action='store_true', help='outputs the video')
     parser.add_argument('--labels-out', action='store_true', help='outputs the labels')
     parser.add_argument('--no-show', action='store_true', help='do not show the video')
+    parser.add_argument('--just-detector', action='store_true', help='just run the detector')
 
     return parser.parse_args()

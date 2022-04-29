@@ -81,53 +81,57 @@ def run_deepsort(model, opt):
     )
 
     # pass detections to deepsort
-    outputs = deepsort.update(
-      detections.current[:, 2:6], # xywhs
-      detections.current[:, 6], # confs
-      detections.current[:, 7], # clss
-      frame.copy()
-    )
+    if not opt.just_detector:
+      outputs = deepsort.update(
+        detections.current[:, 2:6], # xywhs
+        detections.current[:, 6], # confs
+        detections.current[:, 7], # clss
+        frame.copy()
+      )
     
-    if len(outputs) > 0:
-      # stack confs to outputs
-      min_dim = min(outputs.shape[0], detections.current.shape[0])
-      outputs = outputs[:min_dim]
-      detections.current = detections.current[:min_dim]
-      detections.current[:, 2:6] = outputs[:, :4] # bboxes
-      detections.current[:, 1] = outputs[:, 4] + 1 # ids
+      if len(outputs) > 0:
+        # stack confs to outputs
+        min_dim = min(outputs.shape[0], detections.current.shape[0])
+        outputs = outputs[:min_dim]
+        detections.current = detections.current[:min_dim]
+        detections.current[:, 2:6] = outputs[:, :4] # bboxes
+        detections.current[:, 1] = outputs[:, 4] + 1 # ids
 
-      # add centers to heatmap
-      #heatmap.update_points(detections.current[:, 2:6])
-      # update queue
-      #q.put(heatmap.points_list)
+        # add centers to heatmap
+        #heatmap.update_points(detections.current[:, 2:6])
+        # update queue
+        #q.put(heatmap.points_list)
 
-      # Filter just the moving objects
-      if False:
-        frame[mask > 0, 2] = 255
-        bs_bboxes = []
-        for cnt in contours:
-          area = cv2.contourArea(cnt)
-          # threshold
-          if area > 0:
-            x,y,w,h = cv2.boundingRect(cnt)
-            bs_bboxes.append([x,y,w,h])
+        # Filter just the moving objects
+        if False:
+          frame[mask > 0, 2] = 255
+          bs_bboxes = []
+          for cnt in contours:
+            area = cv2.contourArea(cnt)
+            # threshold
+            if area > 0:
+              x,y,w,h = cv2.boundingRect(cnt)
+              bs_bboxes.append([x,y,w,h])
 
-        if len(bs_bboxes) == 0: continue
-        bs_bboxes = xywh2xyxy(torch.tensor(bs_bboxes))
-        det_bboxes = torch.tensor(detections.current[:, 2:6])
-        iou_matrix = box_iou(det_bboxes, bs_bboxes).numpy()
-        detections.current = detections.current[iou_matrix.sum(axis=1)>0]
-        if detections.current.shape[0] == 0: continue
-        if len(detections.current.shape) == 1:
-          detections.current = detections.current.reshape(1, -1) 
-
+          if len(bs_bboxes) == 0: continue
+          bs_bboxes = xywh2xyxy(torch.tensor(bs_bboxes))
+          det_bboxes = torch.tensor(detections.current[:, 2:6])
+          iou_matrix = box_iou(det_bboxes, bs_bboxes).numpy()
+          detections.current = detections.current[iou_matrix.sum(axis=1)>0]
+          if detections.current.shape[0] == 0: continue
+          if len(detections.current.shape) == 1:
+            detections.current = detections.current.reshape(1, -1) 
+      else:
+        detections.current[:, 2:6] = xywh2xyxy(detections.current[:, 2:6])
+    else:
+      detections.current[:, 2:6] = xywh2xyxy(detections.current[:, 2:6])
         
-      frame = inf.attach_detections(annotator, detections.current, frame, classnames, has_id=True)
-      detections.update(append=False)
-      # draw heatpoints in the frame
-      #frame = heatmap.draw_heatpoints(frame)
+    frame = inf.attach_detections(annotator, detections.current, frame, classnames, has_id=True if not opt.just_detector else False)
+    detections.update(append=False)
+    # draw heatpoints in the frame
+    #frame = heatmap.draw_heatpoints(frame)
 
-      pbar.update(1)
+    pbar.update(1)
 
     # Draw counter
     #frame = cv2.rectangle(frame,(229,307),(231,411),(0,255,0),2)
