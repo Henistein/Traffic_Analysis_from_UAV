@@ -79,7 +79,6 @@ def run_deepsort(model, opt):
       confs=pred[:, 4], # confs
       clss=pred[:, 5] # clss
     )
-
     # pass detections to deepsort
     if not opt.just_detector:
       outputs = deepsort.update(
@@ -127,7 +126,7 @@ def run_deepsort(model, opt):
       detections.current[:, 2:6] = xywh2xyxy(detections.current[:, 2:6])
         
     frame = inf.attach_detections(annotator, detections.current, frame, classnames, has_id=True if not opt.just_detector else False)
-    detections.update(append=False)
+    detections.update(append=True if opt.labels_out else False)
     # draw heatpoints in the frame
     #frame = heatmap.draw_heatpoints(frame)
 
@@ -144,8 +143,13 @@ def run_deepsort(model, opt):
       if cv2.waitKey(1) == ord('q'):
         break
 
-  #p.join()
+  if opt.labels_out:
+    # save labels
+    detections.mot_matrix[:, 2:6] = xywh2xyxy(detections.mot_matrix[:, 2:6])
+    np.savetxt('outputs.txt', detections.mot_matrix, delimiter=',')
+
   if opt.video_out:
+    # save video
     video.writer.release()
   video.cap.release()
   cv2.destroyAllWindows()
