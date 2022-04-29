@@ -18,7 +18,7 @@ class OPTS:
   @staticmethod
   def main_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--path', type=str, default='', help='path to video')
+    parser.add_argument('--path', type=str, default='', help='path to dataset')
     parser.add_argument('--model', type=str, default='yolov5l-xs.pt', help='model (yolov5l.pt or yolov5l-xs.pt')
     parser.add_argument('--conf-thres', type=float, default=0.5, help='NMS confident threshold')
     parser.add_argument('--iou-thres', type=float, default=0.5, help='NMS iou threshold')

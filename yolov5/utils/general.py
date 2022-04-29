@@ -11,10 +11,16 @@ class DetectionsMatrix:
   Manages the detections and labels matrix in MOT format
   MOT format: [frame_id id x y w h conf cls]
   """
-  def __init__(self):
+  def __init__(self, classes_to_eval, classnames):
     self.frame_id = 1 # initial frame id
     self.mot_matrix = np.empty((0, 8))
     self.current = None
+    self.class_to_eval = classes_to_eval 
+    self.classnames = classnames
+    self.indexes_to_exclude = []
+    for name in classnames:
+      if name not in classes_to_eval:
+        self.indexes_to_exclude.append(classnames.index(name))
 
   def update_current(self, ids=None, bboxes=None, confs=None, clss=None):
     size = len(clss)
@@ -26,6 +32,9 @@ class DetectionsMatrix:
 
     # create current object
     self.current = np.concatenate((curr_frame_id, curr_ids, curr_bboxes, curr_confs, curr_clss), axis=1)
+
+    # filter classes
+    self.exclude_classes()
 
     #self.curr_frame_id = self.current[:, 0]
     #self.curr_ids = self.current[:, 1]
@@ -40,6 +49,10 @@ class DetectionsMatrix:
     # update frame id and reset current
     self.frame_id += 1
     self.current = None
+  
+  def exclude_classes(self):
+    for i in self.indexes_to_exclude:
+      self.current = self.current[self.current[:, 7] != i]
 
 
 def non_max_suppression(prediction, conf_thres=0.1, iou_thres=0.6, fast=False, classes=None, agnostic=False):

@@ -38,7 +38,10 @@ def run_deepsort(model, opt):
   # heatmap
   #heatmap = HeatMap('image_registration/map_rotunda.png')
   annotator = Annotator()
-  detections = DetectionsMatrix()
+  detections = DetectionsMatrix(
+    classes_to_eval=model.names,
+    classnames=model.names
+  )
   mcd = MCDWrapper()
   video = Video(video_path=opt.path, start_from=opt.start_from, video_out=opt.video_out)
   #box_counter = Box((229, 307), (231, 411))

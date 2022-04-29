@@ -16,8 +16,8 @@ def run(dataset, model, opt, device):
   classnames = model.names
   stats = []
   annotator = Annotator()
-  labels = DetectionsMatrix() # labels in mot format
-  detections = DetectionsMatrix() # detections in mot format
+  labels = DetectionsMatrix(model.names, model.names) # labels in mot format
+  detections = DetectionsMatrix(model.names, model.names) # detections in mot format
   iou = torch.linspace(0.5, 0.95, 10)
   device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
