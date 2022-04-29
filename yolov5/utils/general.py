@@ -33,15 +33,6 @@ class DetectionsMatrix:
     #self.curr_confs = self.current[:, 6]
     #self.curr_clss = self.current[:, 7]
   
-  def scale_to_native(self, img1_shape, img0_shape, ratio_pad=None):
-    """
-    scale bboxes to native coordinates so it can be displayed
-    it can be called by self.scaled_current
-    """
-    self.scaled_current = self.current.copy()
-    scaled_box = xywh2xyxy(self.current[:, 2:6]) # change bboxes format
-    self.scaled_current[:, 2:6] = scale_coords(img1_shape, scaled_box, img0_shape, ratio_pad=ratio_pad)  # native-space labels
-  
   def update(self, append=True):
     # append
     if append:
@@ -198,7 +189,7 @@ def letterbox(im, new_shape=(640, 640), color=(114, 114, 114), auto=True, scaleF
   im = cv2.copyMakeBorder(im, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)  # add border
   return im, ratio, (dw, dh)
 
-def image_loader(im,imsize):
+def image_loader(im,imsize, ret_ratio_pad=False):
   '''
   processes input image for inference 
   '''
@@ -211,4 +202,7 @@ def image_loader(im,imsize):
   im /= 255.0
   im = im.unsqueeze(0)
 
-  return im, h, w 
+  if ret_ratio_pad:
+    return im, h, w , ratio, pad
+  else:
+    return im, h, w 

@@ -97,7 +97,11 @@ class Inference:
     detections, labels, img, annotator, classnames = \
     kwargs['detections'], kwargs['labels'], kwargs['img'], kwargs['annotator'], kwargs['classnames']
 
-    mp, mr, map50, map = Inference.compute_stats(stats)
+    stats_res = Inference.compute_stats(stats)
+    if len(stats_res) == 1:
+      stats_res = 4*[0]
+    mp, mr, map50, map = stats_res
+
     if map50 < threshold:
       print(f"mAP50: {map50}")
       
