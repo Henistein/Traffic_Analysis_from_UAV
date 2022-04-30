@@ -53,6 +53,49 @@ class DetectionsMatrix:
   def exclude_classes(self):
     for i in self.indexes_to_exclude:
       self.current = self.current[self.current[:, 7] != i]
+  
+  def get_centers(self):
+    """
+    Calculate centers of each current detection bbox
+    """
+    centers = []
+    for bbox in self.current[:, 2:6]:
+      x1,y1,x2,y2 = bbox
+      centers.append((int((x1+x2)/2), int((y1+y2)/2)))
+    return centers 
+  
+
+class Annotator:
+  def __init__(self):
+    colors = ('FF3838', 'FF9D97', 'FF701F', 'FFB21D', 'CFD231', '48F90A', '92CC17', '3DDB86', '1A9334', '00D4BB')
+    hex2rgb = lambda h: tuple(int(h[1 + i:1 + i + 2], 16) for i in (0, 2, 4))
+    self.palette = [hex2rgb('#' + c) for c in colors]
+    self.img = None
+  
+  @property
+  def image(self):
+    return self.img.copy()
+
+  def add_image(self, image):
+    self.img = image
+    self.lw =  max(round(sum(image.shape) / 2 * 0.003), 2)
+  
+  def _generate_color(self, i):
+    # generate color by class
+    return self.palette[int(i) % len(self.palette)]
+
+  def draw(self, start, end, label, cls):
+    color = self._generate_color(cls)
+    self.img = cv2.rectangle(self.img, start, end, color, thickness=self.lw, lineType=cv2.LINE_AA)
+    self.img = cv2.putText(self.img, label, (start[0], start[1]+25), 0, 0.5, color, thickness=max(self.lw - 1, 1), lineType=cv2.LINE_AA)
+
+  def draw_centers(self, centers):
+    """
+    Draw centers on frame
+    """
+    for p in centers:
+      self.img = cv2.circle(self.img, p, radius=2, color=(0, 0, 255), thickness=-1)
+
 
 
 def non_max_suppression(prediction, conf_thres=0.1, iou_thres=0.6, fast=False, classes=None, agnostic=False):

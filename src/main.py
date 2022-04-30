@@ -4,10 +4,10 @@ import cv2
 from tqdm import tqdm
 from opts import OPTS
 from utils.conversions import xyxy2xywh, xywh2xyxy
-from utils.general import DetectionsMatrix
+from utils.general import DetectionsMatrix, Annotator
 from deep_sort.deep_sort import DeepSort
 
-from inference import Inference, Annotator
+from inference import Inference 
 from heatmap import HeatMap
 from utils.metrics import box_iou
 from fastmcd.MCDWrapper import MCDWrapper
@@ -37,17 +37,14 @@ def run_deepsort(model, opt):
 
   # heatmap
   #heatmap = HeatMap('image_registration/map_rotunda.png')
+  #mcd = MCDWrapper()
+
   annotator = Annotator()
   detections = DetectionsMatrix(
     classes_to_eval=model.names,
     classnames=model.names
   )
-  mcd = MCDWrapper()
   video = Video(video_path=opt.path, start_from=opt.start_from, video_out=opt.video_out)
-  #box_counter = Box((229, 307), (231, 411))
-  #q = Queue()
-  #p = Process(target=heatmap.draw_heatmap, args=(q,))
-  #p.start()
 
   isFirst = True
   frame_id = 0 
@@ -55,6 +52,7 @@ def run_deepsort(model, opt):
   while pbar:
     ret, frame = video.cap.read()
     frame_id += 1
+    annotator.add_image(frame)
 
     if not ret:
       print("Can't receive frame (stream end?). Exiting ...")
@@ -128,10 +126,11 @@ def run_deepsort(model, opt):
     else:
       detections.current[:, 2:6] = xywh2xyxy(detections.current[:, 2:6])
         
-    frame = inf.attach_detections(annotator, detections.current, frame, classnames, has_id=True if not opt.just_detector else False)
-    detections.update(append=True if opt.labels_out else False)
     # draw heatpoints in the frame
     #frame = heatmap.draw_heatpoints(frame)
+
+    # calculate centers of each bbox
+    centers = detections.get_centers()
 
     pbar.update(1)
 
@@ -141,10 +140,19 @@ def run_deepsort(model, opt):
     if opt.video_out:
       video.writer.write(frame)
     
+    # draw 
     if not opt.no_show:
-      cv2.imshow('frame', frame)
+      # draw detections
+      frame = inf.attach_detections(annotator, detections.current, classnames, has_id=True if not opt.just_detector else False)
+      # draw centers
+      annotator.draw_centers(centers)
+
+      cv2.imshow('frame', annotator.image)
       if cv2.waitKey(1) == ord('q'):
         break
+    
+    # update detections
+    detections.update(append=True if opt.labels_out else False)
 
   if opt.labels_out:
     # save labels

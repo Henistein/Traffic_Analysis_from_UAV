@@ -1,10 +1,9 @@
 import torch
 import cv2
 import numpy as np
-from utils.general import non_max_suppression, letterbox, image_loader
-from utils.metrics import process_batch, ap_per_class
-from utils.conversions import coco2xyxy, scale_coords, normyolo2xyxy, clip_coords
-from models.yolo import Model
+from utils.general import non_max_suppression, image_loader, Annotator
+from utils.metrics import ap_per_class
+from utils.conversions import scale_coords
 
 
 class Inference:
@@ -40,13 +39,10 @@ class Inference:
   
                 
   @staticmethod
-  def attach_detections(annotator, detections, img, classnames, has_id=False, is_label=False):
+  def attach_detections(annotator, detections, classnames, has_id=False, is_label=False):
     """
     detections format: [N][frame_id, id, x, y, x, y, confs, cls]
     """
-    img = img.copy()
-    # add image to annotator
-    annotator.add_image(img)
     for pred in detections:
       x1,y1,x2,y2 = map(int, pred[2:6])
 
@@ -106,34 +102,12 @@ class Inference:
       print(f"mAP50: {map50}")
       
       # get detections images and labels image with bb
-      det_img = Inference.attach_detections(annotator, detections, img, classnames, has_id=True)
-      lab_img = Inference.attach_detections(annotator, labels, img, classnames, has_id=True)
+      annotator.add_image(img.copy())
+      det_img = Inference.attach_detections(annotator, detections, classnames, has_id=True)
+      annotator.add_image(img.copy())
+      lab_img = Inference.attach_detections(annotator, labels, classnames, has_id=True)
 
       # concatenate det_img and lab_img vertical
       res = cv2.hconcat([det_img, lab_img])
       cv2.imshow('frame', res)
       cv2.waitKey(0)
-
-class Annotator:
-  def __init__(self):
-    colors = ('FF3838', 'FF9D97', 'FF701F', 'FFB21D', 'CFD231', '48F90A', '92CC17', '3DDB86', '1A9334', '00D4BB')
-    hex2rgb = lambda h: tuple(int(h[1 + i:1 + i + 2], 16) for i in (0, 2, 4))
-    self.palette = [hex2rgb('#' + c) for c in colors]
-    self.img = None
-  
-  @property
-  def image(self):
-    return self.img.copy()
-
-  def add_image(self, image):
-    self.img = image
-    self.lw =  max(round(sum(image.shape) / 2 * 0.003), 2)
-  
-  def _generate_color(self, i):
-    # generate color by class
-    return self.palette[int(i) % len(self.palette)]
-
-  def draw(self, start, end, label, cls):
-    color = self._generate_color(cls)
-    self.img = cv2.rectangle(self.img, start, end, color, thickness=self.lw, lineType=cv2.LINE_AA)
-    self.img = cv2.putText(self.img, label, (start[0], start[1]+25), 0, 0.5, color, thickness=max(self.lw - 1, 1), lineType=cv2.LINE_AA)

@@ -1,9 +1,9 @@
 import torch
 import cv2
 from datasets import MyDataset
-from inference import Inference, Annotator
+from inference import Inference 
 from utils.evaluator import Evaluator
-from utils.general import DetectionsMatrix, non_max_suppression
+from utils.general import DetectionsMatrix, non_max_suppression, Annotator
 from utils.conversions import scale_coords, xywh2xyxy, xyxy2xywh
 from utils.metrics import process_batch
 from deep_sort.deep_sort import DeepSort
