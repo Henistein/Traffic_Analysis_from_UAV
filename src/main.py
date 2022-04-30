@@ -1,3 +1,4 @@
+from lib2to3.pgen2.token import OP
 import torch
 import numpy as np
 import cv2 
@@ -7,6 +8,7 @@ from utils.conversions import xyxy2xywh, xywh2xyxy
 from utils.general import DetectionsMatrix, Annotator
 from deep_sort.deep_sort import DeepSort
 
+from utils.optical_flow import OpticalFlow
 from inference import Inference 
 from heatmap import HeatMap
 from utils.metrics import box_iou
@@ -29,6 +31,7 @@ class Video:
       fourcc = cv2.VideoWriter_fourcc(*'XVID')
       self.writer = cv2.VideoWriter('output.mp4', fourcc, self.fps, (self.width, self.height))
 
+
 def run_deepsort(model, opt):
   inf = Inference(model=model, device='cuda', imsize=opt.img_size, iou_thres=opt.iou_thres, conf_thres=opt.conf_thres)
   classnames = model.names
@@ -40,6 +43,7 @@ def run_deepsort(model, opt):
   #mcd = MCDWrapper()
 
   annotator = Annotator()
+  of = OpticalFlow()
   detections = DetectionsMatrix(
     classes_to_eval=model.names,
     classnames=model.names
@@ -48,6 +52,7 @@ def run_deepsort(model, opt):
 
   isFirst = True
   frame_id = 0 
+  idcenters = None # id:center
   pbar=tqdm(video.cap.isOpened(), total=video.video_frames)
   while pbar:
     ret, frame = video.cap.read()
@@ -121,6 +126,12 @@ def run_deepsort(model, opt):
           if detections.current.shape[0] == 0: continue
           if len(detections.current.shape) == 1:
             detections.current = detections.current.reshape(1, -1) 
+
+        # calculate centers of each bbox per id
+        idcenters = detections.get_idcenters()
+        of.update_centers(idcenters)
+        of.get_speed_ppixel(annotator)
+
       else:
         detections.current[:, 2:6] = xywh2xyxy(detections.current[:, 2:6])
     else:
@@ -129,8 +140,6 @@ def run_deepsort(model, opt):
     # draw heatpoints in the frame
     #frame = heatmap.draw_heatpoints(frame)
 
-    # calculate centers of each bbox
-    centers = detections.get_centers()
 
     pbar.update(1)
 
@@ -145,7 +154,7 @@ def run_deepsort(model, opt):
       # draw detections
       frame = inf.attach_detections(annotator, detections.current, classnames, has_id=True if not opt.just_detector else False)
       # draw centers
-      annotator.draw_centers(centers)
+      if idcenters: annotator.draw_centers(idcenters.values())
 
       cv2.imshow('frame', annotator.image)
       if cv2.waitKey(1) == ord('q'):

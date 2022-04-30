@@ -54,16 +54,16 @@ class DetectionsMatrix:
     for i in self.indexes_to_exclude:
       self.current = self.current[self.current[:, 7] != i]
   
-  def get_centers(self):
+  def get_idcenters(self):
     """
     Calculate centers of each current detection bbox
     """
-    centers = []
-    for bbox in self.current[:, 2:6]:
-      x1,y1,x2,y2 = bbox
-      centers.append((int((x1+x2)/2), int((y1+y2)/2)))
-    return centers 
-  
+    idcenters = {}
+    for det in self.current:
+      x1,y1,x2,y2 = det[2:6]
+      ids = det[1]
+      idcenters[ids] = (int((x1+x2)/2), int((y1+y2)/2))
+    return idcenters
 
 class Annotator:
   def __init__(self):
@@ -95,7 +95,10 @@ class Annotator:
     """
     for p in centers:
       self.img = cv2.circle(self.img, p, radius=2, color=(0, 0, 255), thickness=-1)
-
+  
+  def draw_trail(self, pair_points):
+    color = (0, 255, 0)
+    cv2.polylines(self.img, np.array([pair_points], dtype=np.int32), False, color, thickness=2, lineType=16)
 
 
 def non_max_suppression(prediction, conf_thres=0.1, iou_thres=0.6, fast=False, classes=None, agnostic=False):
