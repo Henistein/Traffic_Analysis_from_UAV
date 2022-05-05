@@ -53,6 +53,7 @@ def run_deepsort(model, opt):
   isFirst = True
   frame_id = 0 
   idcenters = None # id:center
+  keypoints = None
   pbar=tqdm(video.cap.isOpened(), total=video.video_frames)
   while pbar:
     ret, frame = video.cap.read()
@@ -99,7 +100,7 @@ def run_deepsort(model, opt):
         min_dim = min(outputs.shape[0], detections.current.shape[0])
         outputs = outputs[:min_dim]
         detections.current = detections.current[:min_dim]
-        detections.current[:, 2:6] = outputs[:, :4] # bboxes
+        detections.current[:, 2:6] = outputs[:, :4] # bboxes xyxy
         detections.current[:, 1] = outputs[:, 4] + 1 # ids
 
         # add centers to heatmap
@@ -127,10 +128,13 @@ def run_deepsort(model, opt):
           if len(detections.current.shape) == 1:
             detections.current = detections.current.reshape(1, -1) 
 
+        # extract features (keypoints)
+        keypoints = of.extract_features(frame, detections.current[:, 2:6])
+
         # calculate centers of each bbox per id
-        idcenters = detections.get_idcenters()
-        of.update_centers(idcenters)
-        of.get_speed_ppixel(annotator)
+        #idcenters = detections.get_idcenters()
+        #of.update_centers(idcenters)
+        #of.get_speed_ppixel(annotator)
 
       else:
         detections.current[:, 2:6] = xywh2xyxy(detections.current[:, 2:6])
@@ -140,7 +144,7 @@ def run_deepsort(model, opt):
     # draw heatpoints in the frame
     #frame = heatmap.draw_heatpoints(frame)
 
-
+    # update pbar
     pbar.update(1)
 
     # Draw counter
@@ -154,7 +158,9 @@ def run_deepsort(model, opt):
       # draw detections
       frame = inf.attach_detections(annotator, detections.current, classnames, has_id=True if not opt.just_detector else False)
       # draw centers
-      if idcenters: annotator.draw_centers(idcenters.values())
+      if idcenters is not None: annotator.draw_centers(idcenters.values())
+      # draw keypoints
+      if keypoints is not None: annotator.draw_keypoints(keypoints)
 
       cv2.imshow('frame', annotator.image)
       if cv2.waitKey(1) == ord('q'):

@@ -99,6 +99,11 @@ class Annotator:
   def draw_trail(self, pair_points):
     color = (0, 255, 0)
     cv2.polylines(self.img, np.array([pair_points], dtype=np.int32), False, color, thickness=2, lineType=16)
+  
+  def draw_keypoints(self, kps):
+    for x,y in kps:
+      x,y = int(x), int(y)
+      self.img = cv2.circle(self.img, (x,y), color=(0, 255, 0), radius=3)
 
 
 def non_max_suppression(prediction, conf_thres=0.1, iou_thres=0.6, fast=False, classes=None, agnostic=False):
