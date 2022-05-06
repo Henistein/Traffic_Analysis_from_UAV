@@ -128,12 +128,19 @@ def run_deepsort(model, opt):
           if len(detections.current.shape) == 1:
             detections.current = detections.current.reshape(1, -1) 
 
-        # extract features (keypoints)
-        keypoints = of.extract_features(frame, detections.current[:, 2:6])
+        # extract features
+        detections.features['kps'], detections.features['des'] = of.extract_features(frame, detections.current[:, 2:6])
+        # normalize kps with camera intrinsics
+        detections.features['nkps'] = of.normalize_kps(detections.features['kps'])
+
+        if detections.last_features['kps'] is not None:
+          matches, FM = of.match_features(detections.features, detections.last_features)
+          R,tvec = of.fundamentalToRt(FM)
+          
 
         # calculate centers of each bbox per id
-        #idcenters = detections.get_idcenters()
-        #of.update_centers(idcenters)
+        idcenters = detections.get_idcenters()
+        of.update_centers(idcenters)
         #of.get_speed_ppixel(annotator)
 
       else:
@@ -160,7 +167,7 @@ def run_deepsort(model, opt):
       # draw centers
       if idcenters is not None: annotator.draw_centers(idcenters.values())
       # draw keypoints
-      if keypoints is not None: annotator.draw_keypoints(keypoints)
+      if detections.features['kps'] is not None: annotator.draw_keypoints(detections.features['kps'])
 
       cv2.imshow('frame', annotator.image)
       if cv2.waitKey(1) == ord('q'):

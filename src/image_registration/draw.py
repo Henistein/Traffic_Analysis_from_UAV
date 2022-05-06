@@ -36,7 +36,7 @@ def annotate_image(img):
 
 if __name__ == '__main__':
   # annotate maps image
-  maps_image = 'rua.png'
+  maps_image = 'rotunda.jpg'
   #maps_img_pts = annotate_image(maps_image)
   #print(maps_img_pts)
 

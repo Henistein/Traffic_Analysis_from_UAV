@@ -3,6 +3,7 @@ import time
 import torchvision
 import numpy as np
 import cv2
+from copy import deepcopy
 from utils.conversions import xywh2xyxy, scale_coords
 
 
@@ -21,6 +22,9 @@ class DetectionsMatrix:
     for name in classnames:
       if name not in classes_to_eval:
         self.indexes_to_exclude.append(classnames.index(name))
+    # keypoints
+    self.features = {'kps':None, 'des':None}
+    self.last_features = {'kps':None, 'des':None}
 
   def update_current(self, ids=None, bboxes=None, confs=None, clss=None):
     size = len(clss)
@@ -49,6 +53,9 @@ class DetectionsMatrix:
     # update frame id and reset current
     self.frame_id += 1
     self.current = None
+    # update kps
+    self.last_features = deepcopy(self.features)
+    self.features = {'kps':None, 'des':None} 
   
   def exclude_classes(self):
     for i in self.indexes_to_exclude:
