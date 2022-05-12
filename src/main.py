@@ -14,6 +14,7 @@ from heatmap import HeatMap
 from utils.metrics import box_iou
 from fastmcd.MCDWrapper import MCDWrapper
 from counter import Box
+from utils.map import MAP, Teste
 
 class Video:
   def __init__(self, video_path, start_from=None, video_out=False):
@@ -32,7 +33,7 @@ class Video:
       self.writer = cv2.VideoWriter('output.mp4', fourcc, self.fps, (self.width, self.height))
 
 
-def run_deepsort(model, opt):
+def run(model, opt):
   inf = Inference(model=model, device='cuda', imsize=opt.img_size, iou_thres=opt.iou_thres, conf_thres=opt.conf_thres)
   classnames = model.names
   # load deepsort
@@ -41,9 +42,20 @@ def run_deepsort(model, opt):
   # heatmap
   #heatmap = HeatMap('image_registration/map_rotunda.png')
   #mcd = MCDWrapper()
+  
+  # map
+  mapp = MAP(
+      lat_north=40.273668,
+      long_west=-7.506679,
+      lat_south=40.268085,
+      long_east=-7.493513,
+      lat_center=40.271018,
+      long_center=-7.500335,
+      image=cv2.imread('MAPA.jpg')
+  )
+  teste = Teste(mapp)
 
   annotator = Annotator()
-  of = OpticalFlow()
   detections = DetectionsMatrix(
     classes_to_eval=model.names,
     classnames=model.names
@@ -53,8 +65,9 @@ def run_deepsort(model, opt):
   isFirst = True
   frame_id = 0 
   idcenters = None # id:center
-  keypoints = None
+  map_img, img_crop = None, None
   pbar=tqdm(video.cap.isOpened(), total=video.video_frames)
+  k = 0
   while pbar:
     ret, frame = video.cap.read()
     frame_id += 1
@@ -75,6 +88,36 @@ def run_deepsort(model, opt):
       mask = mcd.run(gray)
     contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     """
+
+    # homography sattelite
+    if frame_id % 3 == 0:
+      map_img, img_crop = teste.get_next_data(k)
+
+      if frame_id < 480:
+        src_pts = np.array([(592, 455), (596, 285), (592, 588), (744, 418), (745, 461), (793, 440), (383, 444)])
+        dst_pts = np.array([(1713, 2446), (1736, 2326), (1721, 2550), (1826, 2431), (1826, 2469), (1875, 2450), (1590, 2434)])
+      else:
+        src_pts = np.array([(542, 403), (558, 304), (650, 566), (650, 313), (676, 105), (802, 206), (1145, 269)])
+        dst_pts = np.array([(1672, 2013), (1687, 1951), (1743, 2137), (1751, 1963), (1773, 1820), (1856, 1897), (2070, 1951)])
+
+      M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC,5.0)
+      #dst = cv2.warpPerspective(frame, M, (mapp.image.shape[1], mapp.image.shape[0]))
+      # resize to 1280 720
+      #dst = cv2.resize(dst, (1280,720),cv2.INTER_AREA)
+      #cv2.imshow('warp_frame', dst)
+
+      scaled_centers = []
+      if idcenters is not None:
+        for pt in idcenters.values():
+          scl_pt = [pt[0],pt[1],1]
+          scl_pt = M@scl_pt
+          scl_pt = [int(scl_pt[0]/scl_pt[2]), int(scl_pt[1]/scl_pt[2])]
+          scl_pt = [int((scl_pt[0])/3.75), int((scl_pt[1])/3.865)]
+          scaled_centers.append(scl_pt)
+          # print scaled centers in small image
+          map_img = cv2.circle(map_img, scl_pt, radius=3, color=(255,0,0), thickness=3)
+      k+=1
+      
 
     # inference
     pred = inf.get_pred(frame)
@@ -128,19 +171,10 @@ def run_deepsort(model, opt):
           if len(detections.current.shape) == 1:
             detections.current = detections.current.reshape(1, -1) 
 
-        # extract features
-        detections.features['kps'], detections.features['des'] = of.extract_features(frame, detections.current[:, 2:6])
-        # normalize kps with camera intrinsics
-        detections.features['nkps'] = of.normalize_kps(detections.features['kps'])
-
-        if detections.last_features['kps'] is not None:
-          matches, FM = of.match_features(detections.features, detections.last_features)
-          R,tvec = of.fundamentalToRt(FM)
-          
 
         # calculate centers of each bbox per id
         idcenters = detections.get_idcenters()
-        of.update_centers(idcenters)
+        #of.update_centers(idcenters)
         #of.get_speed_ppixel(annotator)
 
       else:
@@ -166,8 +200,8 @@ def run_deepsort(model, opt):
       frame = inf.attach_detections(annotator, detections.current, classnames, has_id=True if not opt.just_detector else False)
       # draw centers
       if idcenters is not None: annotator.draw_centers(idcenters.values())
-      # draw keypoints
-      if detections.features['kps'] is not None: annotator.draw_keypoints(detections.features['kps'])
+      if map_img is not None: cv2.imshow('map_img', map_img)
+      if img_crop is not None: cv2.imshow('crop_img', img_crop)
 
       cv2.imshow('frame', annotator.image)
       if cv2.waitKey(1) == ord('q'):
@@ -195,4 +229,4 @@ if __name__ == '__main__':
   model = torch.load(weights)['model'].float()
   model.to(torch.device('cuda'))
 
-  run_deepsort(model, opt)
+  run(model, opt)
