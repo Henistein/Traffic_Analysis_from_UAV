@@ -155,31 +155,7 @@ def run(model, opt):
     # AQUI
     # homography sattelite
     if frame_id % 3 == 0:
-      map_img, img_crop = teste.get_next_data(k)
-
-      if frame_id < 480:
-        src_pts = np.array([(592, 455), (596, 285), (592, 588), (744, 418), (745, 461), (793, 440), (383, 444)])
-        dst_pts = np.array([(1713, 2446), (1736, 2326), (1721, 2550), (1826, 2431), (1826, 2469), (1875, 2450), (1590, 2434)])
-      else:
-        src_pts = np.array([(542, 403), (558, 304), (650, 566), (650, 313), (676, 105), (802, 206), (1145, 269)])
-        dst_pts = np.array([(1672, 2013), (1687, 1951), (1743, 2137), (1751, 1963), (1773, 1820), (1856, 1897), (2070, 1951)])
-
-      M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC,5.0)
-      #dst = cv2.warpPerspective(frame, M, (mapp.image.shape[1], mapp.image.shape[0]))
-      # resize to 1280 720
-      #dst = cv2.resize(dst, (1280,720),cv2.INTER_AREA)
-      #cv2.imshow('warp_frame', dst)
-
-      scaled_centers = []
-      if idcenters is not None:
-        for pt in idcenters.values():
-          scl_pt = [pt[0],pt[1],1]
-          scl_pt = M@scl_pt
-          scl_pt = [int(scl_pt[0]/scl_pt[2]), int(scl_pt[1]/scl_pt[2])]
-          scl_pt = [int((scl_pt[0])/3.75), int((scl_pt[1])/3.865)]
-          scaled_centers.append(scl_pt)
-          # print scaled centers in small image
-          map_img = cv2.circle(map_img, scl_pt, radius=3, color=(255,0,0), thickness=3)
+      map_img, img_crop,scaled_points = teste.get_next_data(k,idcenters.values())
       k+=1
         
     # draw heatpoints in the frame
