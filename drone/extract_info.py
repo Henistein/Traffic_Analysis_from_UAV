@@ -1,9 +1,8 @@
 import pandas as pd
 from datetime import datetime
 
-names = ["altitude_above_seaLevel(feet)", " compass_heading(degrees)", "latitude", "longitude"]
+names = ["altitude_above_seaLevel(feet)", " compass_heading(degrees)", "latitude", "longitude", "altitude(feet)"," roll(degrees)", " pitch(degrees)", "height_above_takeoff(feet)", "gimbal_heading(degrees)", "gimbal_pitch(degrees)"]
 data = pd.read_csv('May-4th-2022-06-22PM-Flight-Airdata.csv')
-
 
 limit = [datetime.strptime("17:25:00", "%H:%M:%S"),
          datetime.strptime("17:29:43", "%H:%M:%S")]
