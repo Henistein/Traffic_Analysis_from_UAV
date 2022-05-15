@@ -22,13 +22,11 @@ class DetectionsMatrix:
     for name in classnames:
       if name not in classes_to_eval:
         self.indexes_to_exclude.append(classnames.index(name))
-    # keypoints
-    self.features = {'kps':None, 'des':None}
-    self.last_features = {'kps':None, 'des':None}
+    self.idcenters = {}
 
   def update_current(self, ids=None, bboxes=None, confs=None, clss=None):
     size = len(clss)
-    curr_ids = ids.cpu().numpy().reshape(-1, 1) if ids is not None else np.empty((size, 1))
+    curr_ids = ids.cpu().numpy().reshape(-1, 1) if ids is not None else np.full((size, 1), -1)
     curr_bboxes = bboxes.cpu().numpy() if bboxes is not None else np.empty((size, 4))
     curr_confs = confs.cpu().numpy().reshape(-1, 1) if confs is not None else np.full((size, 1), 1) # labels
     curr_clss = clss.cpu().numpy().reshape(-1, 1) if clss is not None else clss
@@ -53,24 +51,21 @@ class DetectionsMatrix:
     # update frame id and reset current
     self.frame_id += 1
     self.current = None
-    # update kps
-    self.last_features = deepcopy(self.features)
-    self.features = {'kps':None, 'des':None} 
   
   def exclude_classes(self):
     for i in self.indexes_to_exclude:
       self.current = self.current[self.current[:, 7] != i]
   
-  def get_idcenters(self):
+  def update_idcenters(self):
     """
     Calculate centers of each current detection bbox
     """
-    idcenters = {}
     for det in self.current:
       x1,y1,x2,y2 = det[2:6]
-      ids = det[1]
-      idcenters[ids] = (int((x1+x2)/2), int((y1+y2)/2))
-    return idcenters
+      id_ = det[1]
+      pt = (int((x1+x2)/2), int((y1+y2)/2))
+      # add assign id with respective points
+      self.idcenters[id_] = pt
 
 class Annotator:
   def __init__(self):

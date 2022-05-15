@@ -1,3 +1,4 @@
+from email.errors import InvalidMultipartContentTransferEncodingDefect
 import cv2
 import numpy as np
 import pandas as pd
@@ -20,14 +21,25 @@ class MAP:
     self.pixels_per_lat = self.height/(self.lat_north-self.lat_south)
     self.pixels_per_long = self.width/(self.long_east-self.long_west)
     # adjust
-    adjx, adjy = self.find_adjust_scale()
-    self.pixels_per_lat *= adjx
-    self.pixels_per_long *= adjy
+    self.adjx, self.adjy = self.find_adjust_scale()
 
   def coords_to_pixels(self, lat, lon):
-    x = (lon-self.long_west)*self.pixels_per_long
-    y = abs(lat-self.lat_north)*self.pixels_per_lat
-    return x,y
+    """
+    https://stackoverflow.com/questions/2103924/mercator-longitude-and-latitude-calculations-to-x-and-y-on-a-cropped-map-of-the/10401734#10401734
+    """
+    mapLatBottomRad = self.lat_south * np.pi / 180
+    latitudeRad = lat * np.pi / 180
+    mapLngDelta = (self.long_east - self.long_west)
+
+    worldMapWidth = ((self.width / mapLngDelta) * 360) / (2 * np.pi)
+    mapOffsetY = (worldMapWidth / 2 * np.log((1 + np.sin(mapLatBottomRad)) / (1 - np.sin(mapLatBottomRad))))
+
+    x = (lon - self.long_west) * (self.width / mapLngDelta)
+    y = self.height - ((worldMapWidth / 2 * np.log((1 + np.sin(latitudeRad)) / (1 - np.sin(latitudeRad)))) - mapOffsetY)
+
+    if not hasattr(self, "adjx"):
+      return x,y
+    return self.adjx*x, self.adjy*y
 
   def find_adjust_scale(self):
     cx, cy = self.width//2, self.height//2
@@ -164,24 +176,23 @@ class Teste:
     # convert video points to small image
     # scale points from 1280x720 to small image dimensions
     scale_x, scale_y = 1280/(cam_w*2), 720/(cam_h*2)
-    scaled_pts = []
+    scaled_pts = {}
 
-    for pt in idcenters:
-      scaled_pts.append((int(pt[0]/scale_x), int(pt[1]/scale_y)))
+    for k,pt in idcenters.items():
+      scaled_pts[k] = (int(pt[0]/scale_x), int(pt[1]/scale_y))
     
     # convert point coordinates to map image
     big_image_dim = self.mapp.image.shape[1]//scale[0], self.mapp.image.shape[0]//scale[1]
     #incx, incy = (big_image_dim[0]//2 - cam_w), (big_image_dim[1]//2 - cam_h)
     incx, incy = x-cam_w, y-cam_h
 
-    for i in range(len(scaled_pts)):
-      pt = scaled_pts[i]
+    for k,pt in scaled_pts.items():
       pt = (int(pt[0]+incx), int(pt[1]+incy))
       pt = self.mapp.rotate_camera((x,y), angle, [pt])[0]
-      scaled_pts[i] = pt
-
-      # draw point on image    
-      img = cv2.circle(img,scaled_pts[i],radius=3,color=(0,255,0),thickness=-1)
+      # draw point on 1280x720 image    
+      img = cv2.circle(img,pt,radius=3,color=(0,255,0),thickness=-1)
+      # scale points to big image
+      scaled_pts[k] = (int(pt[0]*scale[0]),int(pt[1]*scale[1]))
 
     return img,img_crop,scaled_pts
 
