@@ -179,20 +179,21 @@ class Teste:
     scaled_pts = {}
 
     for k,pt in idcenters.items():
-      scaled_pts[k] = (int(pt[0]/scale_x), int(pt[1]/scale_y))
-    
+      scaled_pts[k] = (pt[0]/scale_x, pt[1]/scale_y)
+
     # convert point coordinates to map image
     big_image_dim = self.mapp.image.shape[1]//scale[0], self.mapp.image.shape[0]//scale[1]
     #incx, incy = (big_image_dim[0]//2 - cam_w), (big_image_dim[1]//2 - cam_h)
     incx, incy = x-cam_w, y-cam_h
 
     for k,pt in scaled_pts.items():
+      float_pt = (pt[0]+incx, pt[1]+incy)
       pt = (int(pt[0]+incx), int(pt[1]+incy))
       pt = self.mapp.rotate_camera((x,y), angle, [pt])[0]
       # draw point on 1280x720 image    
       img = cv2.circle(img,pt,radius=3,color=(0,255,0),thickness=-1)
       # scale points to big image
-      scaled_pts[k] = (int(pt[0]*scale[0]),int(pt[1]*scale[1]))
+      scaled_pts[k] = (float_pt[0]*scale[0],float_pt[1]*scale[1])
 
     return img,img_crop,scaled_pts
 

@@ -68,11 +68,14 @@ class DetectionsMatrix:
       self.idcenters[id_] = pt
 
 class Annotator:
+  FONT_SIZE = 0.6
+  LINE_TYPE = 2
   def __init__(self):
     colors = ('FF3838', 'FF9D97', 'FF701F', 'FFB21D', 'CFD231', '48F90A', '92CC17', '3DDB86', '1A9334', '00D4BB')
     hex2rgb = lambda h: tuple(int(h[1 + i:1 + i + 2], 16) for i in (0, 2, 4))
     self.palette = [hex2rgb('#' + c) for c in colors]
     self.img = None
+    self.current_label = ""
   
   @property
   def image(self):
@@ -81,15 +84,35 @@ class Annotator:
   def add_image(self, image):
     self.img = image
     self.lw =  max(round(sum(image.shape) / 2 * 0.003), 2)
+    # reset current label
+    self.reset_label()
+
+  def update_label(self, label):
+    self.current_label += label
+
+  def reset_label(self):
+    self.current_label = ""
   
   def _generate_color(self, i):
     # generate color by class
     return self.palette[int(i) % len(self.palette)]
 
-  def draw(self, start, end, label, cls):
+  def draw(self, start, end, cls=None):
+    """
+    Draw bounding box and label
+    """
     color = self._generate_color(cls)
+    self.draw_bounding_box(start, end, color)
+    self.draw_label(start, color)
+
+  def draw_bounding_box(self, start, end, color):
     self.img = cv2.rectangle(self.img, start, end, color, thickness=self.lw, lineType=cv2.LINE_AA)
-    self.img = cv2.putText(self.img, label, (start[0], start[1]+25), 0, 0.5, color, thickness=max(self.lw - 1, 1), lineType=cv2.LINE_AA)
+
+  def draw_label(self, start, color):
+    (text_width, text_height), baseline = cv2.getTextSize(
+        self.current_label, cv2.FONT_HERSHEY_SIMPLEX, Annotator.FONT_SIZE, Annotator.LINE_TYPE)
+    self.img = cv2.rectangle(self.img, start, (start[0]+text_width,start[1]-text_height-baseline-10), color, cv2.FILLED)
+    self.img = cv2.putText(self.img, self.current_label, (start[0], start[1]-5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,255), lineType=Annotator.LINE_TYPE)
 
   def draw_centers(self, centers):
     """

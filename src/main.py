@@ -16,6 +16,7 @@ from utils.metrics import box_iou
 from fastmcd.MCDWrapper import MCDWrapper
 from counter import Box
 from utils.map import MAP, Teste
+from copy import deepcopy
 
 class Video:
   def __init__(self, video_path, start_from=None, video_out=False):
@@ -163,30 +164,20 @@ def run(model, opt):
     if frame_id % 3 == 0:
       map_img, img_crop, scaled_points = teste.get_next_data(k,filter_current_ids(detections.idcenters,detections.current[:, 1]))
       # speed
-      t = 2
-      if t in scaled_points.keys():
-        # AQUI
-        if last_scaled_pts is not None:
-          # calulate euclidean distance
-          for id_ in set(scaled_points).intersection(set(last_scaled_pts)):
-            dist = euclidean(last_scaled_pts[id_], scaled_points[id_])
-            if id_ in speeds.keys():
-              speeds[id_].append(dist)
-            else:
-              speeds[id_] = [dist]
+      if last_scaled_pts is not None:
+        # calulate euclidean distance
+        for id_ in set(scaled_points).intersection(set(last_scaled_pts)):
+          dist = euclidean(last_scaled_pts[id_], scaled_points[id_])
+          dist = dist*200/824 # convert pixels to meters (824px = 200m)
+          if id_ in speeds.keys():
+            speeds[id_].append((dist/0.1)*3.6)
+          else:
+            speeds[id_] = [(dist/0.1)*3.6]
       
-        if 2 in speeds.keys():
-          print(detections.idcenters[2])
-          print(scaled_points[2])
-          print(speeds[2])
-        
-  
       # update last_scaled_pts
-      last_scaled_pts = scaled_points.copy()
+      last_scaled_pts = deepcopy(scaled_points)
       k+=1
 
-    if frame_id == 59: break
-        
     # draw heatpoints in the frame
     #frame = heatmap.draw_heatpoints(frame)
 
@@ -202,7 +193,7 @@ def run(model, opt):
     # draw 
     if not opt.no_show:
       # draw detections
-      frame = inf.attach_detections(annotator, detections.current, classnames, has_id=True if not opt.just_detector else False)
+      frame = inf.attach_detections(annotator, detections.current, classnames, label="I" if not opt.just_detector else "CP", speeds=speeds)
       # draw centers
       if len(detections.idcenters): annotator.draw_centers(filter_current_ids(detections.idcenters, detections.current[:, 1]).values())
       if map_img is not None: cv2.imshow('map_img', map_img)
@@ -225,10 +216,6 @@ def run(model, opt):
     video.writer.release()
   video.cap.release()
   cv2.destroyAllWindows()
-
-  # plots
-  plt.plot(speeds[2])
-  plt.show()
 
 if __name__ == '__main__':
   opt = OPTS.main_args()

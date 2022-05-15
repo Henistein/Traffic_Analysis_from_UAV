@@ -39,29 +39,39 @@ class Inference:
   
                 
   @staticmethod
-  def attach_detections(annotator, detections, classnames, has_id=False, is_label=False):
+  def attach_detections(annotator, detections, classnames, label="I", speeds=None):
     """
     detections format: [N][frame_id, id, x, y, x, y, confs, cls]
+    labels: I (id), C (class), P (probability)
     """
     for pred in detections:
       x1,y1,x2,y2 = map(int, pred[2:6])
 
       c = int(pred[-1].item()) # class
       p = pred[-2].item() # confidence (proability)
-      id = int(pred[1])
+      id_ = int(pred[1])
 
       start = (x1,y1)
       end = (x2,y2)
+      
+      # build label
+      final_label = ""
+      if "I" in label and id_ != -1:
+        final_label += f'ID: {id_} '
+      if "C" in label:
+        final_label += f'Class: {classnames[c]} '
+      if "P" in label:
+        final_label += f'Confidence: {str(p*100)[:5]} '
+      if speeds is not None and id_ in speeds.keys():
+        speed = round(speeds[id_][-1], 1)
+        final_label += f'Speed: {speed}Km/h'
 
-      if has_id:
-        label = f'{id}'
-      elif is_label:
-        label = f'{classnames[c]}' 
-      else:
-        label = f'{classnames[c]} {str(p*100)[:5]}%'
-
+      # add label to current image label
+      annotator.update_label(final_label)
       # annotate image
-      annotator.draw(start, end, label, c)
+      annotator.draw(start, end, cls=c)
+      # reset label
+      annotator.reset_label()
 
     return annotator.image
 
@@ -103,9 +113,9 @@ class Inference:
       
       # get detections images and labels image with bb
       annotator.add_image(img.copy())
-      det_img = Inference.attach_detections(annotator, detections, classnames, has_id=True)
+      det_img = Inference.attach_detections(annotator, detections, classnames, label="I")
       annotator.add_image(img.copy())
-      lab_img = Inference.attach_detections(annotator, labels, classnames, has_id=True)
+      lab_img = Inference.attach_detections(annotator, labels, classnames, label="I")
 
       # concatenate det_img and lab_img vertical
       res = cv2.hconcat([det_img, lab_img])
