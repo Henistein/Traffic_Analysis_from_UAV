@@ -1,4 +1,3 @@
-from lib2to3.pgen2.token import OP
 import torch
 import numpy as np
 import cv2 
@@ -15,7 +14,7 @@ from heatmap import HeatMap
 from utils.metrics import box_iou
 from fastmcd.MCDWrapper import MCDWrapper
 from counter import Box
-from utils.map import MAP, Teste
+from utils.orthophoto import *
 from copy import deepcopy
 
 class Video:
@@ -36,7 +35,7 @@ class Video:
 
 # auxiliar methods
 def filter_current_ids(idcenters, current_ids):
-  return {k:idcenters[k] for k in current_ids}
+  return {k:idcenters[k] for k in current_ids if k != -1}
 
 
 def run(model, opt):
@@ -50,16 +49,20 @@ def run(model, opt):
   #mcd = MCDWrapper()
   
   # map
-  mapp = MAP(
+  """
+  geo = GeoInterpolation(
       lat_north=40.273668,
       long_west=-7.506679,
       lat_south=40.268085,
       long_east=-7.493513,
       lat_center=40.271018,
       long_center=-7.500335,
-      image=cv2.imread('MAPA.jpg')
+      image=cv2.imread('images/MAPA.jpg')
   )
-  teste = Teste(mapp)
+  """
+  geo = GeoRef("images/MAPA_SAT2_REF.tif")
+
+  teste = MapDrone(geo)
 
   annotator = Annotator()
   detections = DetectionsMatrix(

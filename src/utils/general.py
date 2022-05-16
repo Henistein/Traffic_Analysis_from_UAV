@@ -61,8 +61,9 @@ class DetectionsMatrix:
     Calculate centers of each current detection bbox
     """
     for det in self.current:
-      x1,y1,x2,y2 = det[2:6]
       id_ = det[1]
+      if id_ == -1: continue
+      x1,y1,x2,y2 = det[2:6]
       pt = (int((x1+x2)/2), int((y1+y2)/2))
       # add assign id with respective points
       self.idcenters[id_] = pt
