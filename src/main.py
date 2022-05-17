@@ -14,7 +14,7 @@ from heatmap import HeatMap
 from utils.metrics import box_iou
 from fastmcd.MCDWrapper import MCDWrapper
 from counter import Box
-from utils.orthophoto import *
+from utils.dronemap import *
 from copy import deepcopy
 
 class Video:
