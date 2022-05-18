@@ -185,6 +185,8 @@ class MapDrone:
     center = (1280/2, 720/2)
     scaled_pts = {}
     for k,pt in idcenters.items():
+      # Rotate point
+      pt = self.rotate_camera(center, angle, [pt])[0]
       dist_cx_x = abs(pt[0]-center[0]) * gsdc / 100
       dist_cy_y = abs(pt[1]-center[1]) * gsdc / 100
       new_lat = lat + (dist_cy_y/(6378*1000))*(180/np.pi)
