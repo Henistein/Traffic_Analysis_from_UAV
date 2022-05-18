@@ -1,3 +1,4 @@
+import math
 import numpy as np
 import cv2
 import pandas as pd
@@ -73,24 +74,32 @@ class GeoInterpolation:
     return cx/x, cy/y # adjx, adjy
 
 
-
 class MapDrone:
+  FRAME_WIDTH = 1280
+  FRAME_HEIGHT = 720
+  FOOTPRINT_WIDTH = 200
+  FOOTPRINT_HEIGHT = 120
   def __init__(self, geo):
-    scale = [3.75, 3.865]
     self.geo = geo
-    self.image = self.geo.image
-    w,h = int(geo.image.shape[1]/scale[0]), int(geo.image.shape[0]/scale[1])
-    small_img = cv2.resize(self.image, (w,h), cv2.INTER_AREA)
-
+    self.map = self.geo.image
+    # resized map (1280x720)
+    self.scale = [self.map.shape[1]/self.FRAME_WIDTH, self.map.shape[0]/self.FRAME_HEIGHT]
+    w,h = int(geo.image.shape[1]/self.scale[0]), int(geo.image.shape[0]/self.scale[1])
+    self.resized_map = cv2.resize(self.map, (w,h), cv2.INTER_AREA)
+    # extract drone data
     data = pd.read_csv('filtered_data.csv')
-
     self.latitude_list = data["latitude"][:2800].tolist()
     self.longitude_list = data["longitude"][:2800].tolist()
     self.compass_heading_list = data[" compass_heading(degrees)"][:2800].tolist()
-    self.small_img = small_img
 
   def rotate_camera(self, center, angle, pts):
-    angle = self._degrees_to_rads(angle)
+    """
+    :param center: center of the rotation point (drone current position)
+    :param angle: angle of rotation (drone heading)
+    :param pts: list of points to rotate
+    @return: list of rotated points
+    """
+    angle = math.radians(angle)
     # ration matrix
     c, s = np.cos(angle), np.sin(angle)
     R = np.array(((c, -s), (s, c)))
@@ -103,37 +112,47 @@ class MapDrone:
       pt = R@pt
       # add the center of the square
       pt = (int(pt[0]+center[0]), int(pt[1]+center[1]))
-
       rotated_pts.append(pt)
-
     return rotated_pts
 
   def _crop_rect(self,img, rect):
+    """
+    Crop the image to the defined rectangle
+    :param img: image to crop 
+    :param rect: crop rectangle
+    @return: cropped image
+    """
     # get the parameter of the small rectangle
     center, size, angle = rect[0], rect[1], rect[2]
     center, size = tuple(map(int, center)), tuple(map(int, size))
-
     # get row and col num in img
     height, width = img.shape[0], img.shape[1]
-
     # calculate the rotation matrix
     M = cv2.getRotationMatrix2D(center, angle, 1)
-
     # rotate the original image
     img_rot = cv2.warpAffine(img, M, (width, height))
-
     # now rotated rectangle becomes vertical, and we crop it
     img_crop = cv2.getRectSubPix(img_rot, size, center)
 
     return img_crop, img_rot, angle
+  
+  def _add_distance_to_coordinates(self, lat, lon, dist_y, dist_x):
+    new_lat = lat + (dist_y/(6378*1000))*(180/np.pi)
+    new_lon = lon + (dist_x/(6378*1000))*(180/np.pi)/np.cos(lat*np.pi/180)
+    return new_lat, new_lon
 
-  def _degrees_to_rads(self, angle):
-    return np.pi*angle/180
-
-  def draw_compass_head(self, center, angle, img, cam_w, cam_h):
-    print(angle)
-    scale = [3.75, 3.865]
-    #sizeX,sizeY = 1280/scale[0]/2, 720/scale[1]/2
+  def draw_drone_footprint(self, center, angle, img, cam_w, cam_h):
+    """
+    Draws drone footprint on the map
+    Extracts drone footprint from the map
+    :param center: drone current position
+    :param angle: drone heading
+    :param img: map image
+    :param cam_w: width of the frame from the center to the edge
+    :param cam_h: height of the frame from the center to the edge
+    @return: map image with drone footprint
+    @return: footprint image
+    """
     sizeX,sizeY = int(cam_w), int(cam_h)
 
     p1 = [center[0]-sizeX, center[1]-sizeY]
@@ -155,73 +174,92 @@ class MapDrone:
     rect = list(rect)
     rect[0] = list(rect[0])
     rect[1] = list(rect[1])
-    rect[0][0] = rect[0][0]*scale[0]
-    rect[1][0] = rect[1][0]*scale[0]
-    rect[0][1] = rect[0][1]*scale[1]
-    rect[1][1] = rect[1][1]*scale[1]
+    rect[0][0] = rect[0][0]*self.scale[0]
+    rect[1][0] = rect[1][0]*self.scale[0]
+    rect[0][1] = rect[0][1]*self.scale[1]
+    rect[1][1] = rect[1][1]*self.scale[1]
     
-    img_crop, _, crop_angle = self._crop_rect(self.image,rect)
+    footprint,_,_ = self._crop_rect(self.map,rect)
 
     # rotate image to match drone perspective
-
     if angle >= 270 or angle == 0:
-      img_crop = cv2.rotate(img_crop, cv2.cv2.ROTATE_90_CLOCKWISE)
+      footprint = cv2.rotate(footprint, cv2.cv2.ROTATE_90_CLOCKWISE)
     elif angle >= 180:
-      img_crop = cv2.rotate(img_crop, cv2.cv2.ROTATE_90_COUNTERCLOCKWISE)
-      img_crop = cv2.rotate(img_crop, cv2.cv2.ROTATE_90_COUNTERCLOCKWISE)
+      footprint = cv2.rotate(footprint, cv2.cv2.ROTATE_90_COUNTERCLOCKWISE)
+      footprint = cv2.rotate(footprint, cv2.cv2.ROTATE_90_COUNTERCLOCKWISE)
     elif angle >= 90:
-      img_crop = cv2.rotate(img_crop, cv2.cv2.ROTATE_90_COUNTERCLOCKWISE)
+      footprint = cv2.rotate(footprint, cv2.cv2.ROTATE_90_COUNTERCLOCKWISE)
 
-    return img,img_crop,crop_angle
+    return img,footprint
+
+  def get_data(self, k):
+    """
+    Get data from the list
+    :param k: index of the data
+    @return: latitude, longitude, compass_heading
+    """
+    return self.latitude_list[k], self.longitude_list[k], self.compass_heading_list[k]
+
   def get_next_data(self, k, idcenters):
-    scale = [3.75, 3.865]
-    img = self.small_img.copy()
-    lat = self.latitude_list[k]
-    lon = self.longitude_list[k]
-    angle = self.compass_heading_list[k]
-    # convert to xy
+    """
+    Process the data from the drone
+    Extract the drone footprint from the map
+    Draw the points from the drone frame to the map
+    :param k: index of the drone data list
+    :param idcenters: list frame object centers
+    """
+    resized_map = self.resized_map.copy()
+    lat,lon,heading = self.get_data(k)
+
+    # convert drone current position to map coordinates
     x,y = self.geo.coords_to_pixels(lat,lon)
-    # scale xy
-    x,y = x/scale[0],y/scale[1]
-    x,y = int(x),int(y)
-    # paint xy on small image
-    img = cv2.circle(img,(x,y),radius=3,color=(0,0,255),thickness=-1)
+    # scale xy to resized map
+    rx,ry = int(x/self.scale[0]),int(y/self.scale[1])
+    # draw xy on the resized map
+    resized_map = cv2.circle(resized_map,(rx,ry),radius=3,color=(0,0,255),thickness=-1)
 
-    # calculate new_lat and new_lon
-    dw = 200/2
-    dh = 120/2
-    new_lat = lat + (dh/(6378*1000))*(180/np.pi)
-    new_lon = lon + (dw/(6378*1000))*(180/np.pi)/np.cos(lat*np.pi/180)
-    # convert new lat and new lon
-    nx,ny = self.geo.coords_to_pixels(new_lat,new_lon)
-    nx,ny = nx/scale[0],ny/scale[1]
-    nx,ny = int(nx),int(ny)
+    """
+    - Calculate latitudes and longitudes of the drone footprint
+    - Convert them to pixels
+    - Scale them to the resized map
+    VIDEO_FRAME -> FOOTPRINT -> MAP -> RESIZED_MAP
+    """
+    ftp_lat, ftp_lon = self._add_distance_to_coordinates(
+      lat, lon, 
+      MapDrone.FOOTPRINT_HEIGHT/2, MapDrone.FOOTPRINT_WIDTH/2
+    )
+    # convert ftp_lat and ftp_lon to map coordinates
+    ftp_x,ftp_y = self.geo.coords_to_pixels(ftp_lat,ftp_lon)
+    # scale ftp_x and ftp_y to resized map
+    ftp_x,ftp_y = int(ftp_x/self.scale[0]),int(ftp_y/self.scale[1])
 
-    # calculate width and height of camera
-    cam_w, cam_h = abs(x-nx), abs(y-ny)
-    # draw compass head (rectangle)
-    img,img_crop, crop_angle = self.draw_compass_head((x,y),angle,img, cam_w, cam_h)
+    # calculate pixel distance from the center of the frame to the edge (resized map)
+    dist_w, dist_h = abs(rx-ftp_x), abs(ry-ftp_y)
+    # draw footprint on the resized map
+    resized_map,footprint = self.draw_drone_footprint((rx,ry),heading,resized_map,dist_w,dist_h)
 
-    # convert video points to small image
-    # scale points from 1280x720 to small image dimensions
-    scale_x, scale_y = 1280/(cam_w*2), 720/(cam_h*2)
+    """
+    Convert video frame points to map coordinates
+    - Scale video frame points to cropped footprint
+    """
+    # scale used to map video frame points to cropped footprint
+    ftp_scale_x = MapDrone.FRAME_WIDTH/(dist_w*2)
+    ftp_scale_y = MapDrone.FRAME_HEIGHT/(dist_h*2)
+    # auxiliar variables to convert from footprint to map coordinates
+    incx, incy = rx-dist_w, ry-dist_h
+
+    # convert video frame points to cropped footprint and then to map coordinates
     scaled_pts = {}
-
     for k,pt in idcenters.items():
-      scaled_pts[k] = (pt[0]/scale_x, pt[1]/scale_y)
+      # scaling the video frame points to cropped footprint 
+      pt = (pt[0]/ftp_scale_x, pt[1]/ftp_scale_y)
+      # convert from cropped footprint to map coordinates
+      pt = (pt[0]+incx, pt[1]+incy)
+      # rotate points to match drone heading
+      pt = self.rotate_camera((rx,ry), heading, [pt])[0]
+      # draw point on resized map
+      resized_map = cv2.circle(resized_map,(int(pt[0]),int(pt[1])),radius=3,color=(0,255,0),thickness=-1)
+      # save points in original map scale
+      scaled_pts[k] = (pt[0]*self.scale[0],pt[1]*self.scale[1])
 
-    # convert point coordinates to map image
-    big_image_dim = self.geo.image.shape[1]//scale[0], self.geo.image.shape[0]//scale[1]
-    #incx, incy = (big_image_dim[0]//2 - cam_w), (big_image_dim[1]//2 - cam_h)
-    incx, incy = x-cam_w, y-cam_h
-
-    for k,pt in scaled_pts.items():
-      float_pt = (pt[0]+incx, pt[1]+incy)
-      pt = (int(pt[0]+incx), int(pt[1]+incy))
-      pt = self.rotate_camera((x,y), angle, [pt])[0]
-      # draw point on 1280x720 image    
-      img = cv2.circle(img,pt,radius=3,color=(0,255,0),thickness=-1)
-      # scale points to big image
-      scaled_pts[k] = (float_pt[0]*scale[0],float_pt[1]*scale[1])
-
-    return img,img_crop,scaled_pts
+    return resized_map,footprint,scaled_pts
