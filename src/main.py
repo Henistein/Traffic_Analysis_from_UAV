@@ -165,11 +165,7 @@ def run(model, opt):
 
     # MAP
     if frame_id % 3 == 0:
-      map_img, scaled_points = teste.get_next_data(k,filter_current_ids(detections.idcenters,detections.current[:, 1]))
-      # resize map_img
-      scaleX = map_img.shape[1] / 1280
-      scaleY = map_img.shape[0] / 720
-      map_img = cv2.resize(map_img, (int(map_img.shape[1]/scaleX), int(map_img.shape[0]/scaleY)))
+      map_img, img_crop, scaled_points = teste.get_next_data(k,filter_current_ids(detections.idcenters,detections.current[:, 1]))
       # speed
       if last_scaled_pts is not None:
         # calulate euclidean distance

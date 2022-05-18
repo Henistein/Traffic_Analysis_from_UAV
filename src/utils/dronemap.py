@@ -72,20 +72,22 @@ class GeoInterpolation:
     x,y = self.coords_to_pixels(self.lat_center, self.long_center)
     return cx/x, cy/y # adjx, adjy
 
+
+
 class MapDrone:
   def __init__(self, geo):
     scale = [3.75, 3.865]
     self.geo = geo
     self.image = self.geo.image
-    #w,h = int(geo.image.shape[1]/scale[0]), int(geo.image.shape[0]/scale[1])
-    #small_img = cv2.resize(self.image, (w,h), cv2.INTER_AREA)
+    w,h = int(geo.image.shape[1]/scale[0]), int(geo.image.shape[0]/scale[1])
+    small_img = cv2.resize(self.image, (w,h), cv2.INTER_AREA)
 
     data = pd.read_csv('filtered_data.csv')
 
     self.latitude_list = data["latitude"][:2800].tolist()
     self.longitude_list = data["longitude"][:2800].tolist()
     self.compass_heading_list = data[" compass_heading(degrees)"][:2800].tolist()
-    #self.small_img = small_img
+    self.small_img = small_img
 
   def rotate_camera(self, center, angle, pts):
     angle = self._degrees_to_rads(angle)
@@ -129,6 +131,7 @@ class MapDrone:
     return np.pi*angle/180
 
   def draw_compass_head(self, center, angle, img, cam_w, cam_h):
+    print(angle)
     scale = [3.75, 3.865]
     #sizeX,sizeY = 1280/scale[0]/2, 720/scale[1]/2
     sizeX,sizeY = int(cam_w), int(cam_h)
@@ -171,30 +174,54 @@ class MapDrone:
 
     return img,img_crop,crop_angle
   def get_next_data(self, k, idcenters):
-    img = self.geo.image.copy()
+    scale = [3.75, 3.865]
+    img = self.small_img.copy()
     lat = self.latitude_list[k]
     lon = self.longitude_list[k]
     angle = self.compass_heading_list[k]
     # convert to xy
     x,y = self.geo.coords_to_pixels(lat,lon)
-    # paint xy on map image
-    img = cv2.circle(img,(x,y),radius=3,color=(0,0,255),thickness=2)
+    # scale xy
+    x,y = x/scale[0],y/scale[1]
+    x,y = int(x),int(y)
+    # paint xy on small image
+    img = cv2.circle(img,(x,y),radius=3,color=(0,0,255),thickness=-1)
 
-    # calculate distance from center to idcenters
-    gsdc = 10.546875
-    center = (1280/2, 720/2)
+    # calculate new_lat and new_lon
+    dw = 200/2
+    dh = 120/2
+    new_lat = lat + (dh/(6378*1000))*(180/np.pi)
+    new_lon = lon + (dw/(6378*1000))*(180/np.pi)/np.cos(lat*np.pi/180)
+    # convert new lat and new lon
+    nx,ny = self.geo.coords_to_pixels(new_lat,new_lon)
+    nx,ny = nx/scale[0],ny/scale[1]
+    nx,ny = int(nx),int(ny)
+
+    # calculate width and height of camera
+    cam_w, cam_h = abs(x-nx), abs(y-ny)
+    # draw compass head (rectangle)
+    img,img_crop, crop_angle = self.draw_compass_head((x,y),angle,img, cam_w, cam_h)
+
+    # convert video points to small image
+    # scale points from 1280x720 to small image dimensions
+    scale_x, scale_y = 1280/(cam_w*2), 720/(cam_h*2)
     scaled_pts = {}
-    for k,pt in idcenters.items():
-      # Rotate point
-      pt = self.rotate_camera(center, angle, [pt])[0]
-      dist_cx_x = abs(pt[0]-center[0]) * gsdc / 100
-      dist_cy_y = abs(pt[1]-center[1]) * gsdc / 100
-      new_lat = lat + (dist_cy_y/(6378*1000))*(180/np.pi)
-      new_lon = lon + (dist_cx_x/(6378*1000))*(180/np.pi)/np.cos(lat*np.pi/180)
-      # convert lat and lon to pixels
-      x,y = self.geo.coords_to_pixels(new_lat,new_lon)
-      scaled_pts[k] = (x,y)
-      # draw points on image
-      img = cv2.circle(img,(int(x),int(y)),radius=3,color=(0,0,255),thickness=2)
 
-    return img,scaled_pts
+    for k,pt in idcenters.items():
+      scaled_pts[k] = (pt[0]/scale_x, pt[1]/scale_y)
+
+    # convert point coordinates to map image
+    big_image_dim = self.geo.image.shape[1]//scale[0], self.geo.image.shape[0]//scale[1]
+    #incx, incy = (big_image_dim[0]//2 - cam_w), (big_image_dim[1]//2 - cam_h)
+    incx, incy = x-cam_w, y-cam_h
+
+    for k,pt in scaled_pts.items():
+      float_pt = (pt[0]+incx, pt[1]+incy)
+      pt = (int(pt[0]+incx), int(pt[1]+incy))
+      pt = self.rotate_camera((x,y), angle, [pt])[0]
+      # draw point on 1280x720 image    
+      img = cv2.circle(img,pt,radius=3,color=(0,255,0),thickness=-1)
+      # scale points to big image
+      scaled_pts[k] = (float_pt[0]*scale[0],float_pt[1]*scale[1])
+
+    return img,img_crop,scaled_pts
