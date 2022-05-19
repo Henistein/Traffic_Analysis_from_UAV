@@ -171,7 +171,7 @@ def run(model, opt):
         # calulate euclidean distance
         for id_ in set(scaled_points).intersection(set(last_scaled_pts)):
           dist = euclidean(last_scaled_pts[id_], scaled_points[id_])
-          dist = dist*200/824 # convert pixels to meters (824px = 200m)
+          dist = dist*86.787/360 # convert pixels to meters (824px = 200m)
           if id_ in speeds.keys():
             speeds[id_].append((dist/0.1)*3.6)
           else:
