@@ -28,5 +28,7 @@ class OPTS:
     parser.add_argument('--labels-out', action='store_true', help='outputs the labels')
     parser.add_argument('--no-show', action='store_true', help='do not show the video')
     parser.add_argument('--just-detector', action='store_true', help='just run the detector')
+    parser.add_argument('--map-image', type=str, default='', help='path to the map image')
+    parser.add_argument('--drone-data', type=str, default='', help='path to the drone data (logs csv)')
 
     return parser.parse_args()

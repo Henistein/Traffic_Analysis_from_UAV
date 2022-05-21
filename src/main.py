@@ -6,6 +6,7 @@ from opts import OPTS
 from utils.conversions import xyxy2xywh, xywh2xyxy
 from utils.general import DetectionsMatrix, Annotator
 from deep_sort.deep_sort import DeepSort
+import geopy.distance
 
 from scipy.spatial.distance import euclidean 
 import matplotlib.pyplot as plt
@@ -37,7 +38,6 @@ class Video:
 def filter_current_ids(idcenters, current_ids):
   return {k:idcenters[k] for k in current_ids if k != -1}
 
-
 def run(model, opt):
   inf = Inference(model=model, device='cuda', imsize=opt.img_size, iou_thres=opt.iou_thres, conf_thres=opt.conf_thres)
   classnames = model.names
@@ -60,9 +60,6 @@ def run(model, opt):
       image=cv2.imread('images/MAPA.jpg')
   )
   """
-  geo = GeoRef("images/MAPA_SAT2_REF.tif")
-
-  teste = MapDrone(geo)
 
   annotator = Annotator()
   detections = DetectionsMatrix(
@@ -70,6 +67,9 @@ def run(model, opt):
     classnames=model.names
   )
   video = Video(video_path=opt.path, start_from=opt.start_from, video_out=opt.video_out)
+  # drone map
+  geo = GeoRef(opt.map_image)
+  teste = MapDrone(opt.drone_data,geo,video.cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
   isFirst = True
   frame_id = 0 
@@ -166,12 +166,21 @@ def run(model, opt):
     # MAP
     if frame_id % 3 == 0:
       map_img, img_crop, scaled_points = teste.get_next_data(k,filter_current_ids(detections.idcenters,detections.current[:, 1]))
+      # resize img_crop to 1280x720
+      #img_crop = cv2.resize(img_crop, (1280, 720))
       # speed
       if last_scaled_pts is not None:
         # calulate euclidean distance
         for id_ in set(scaled_points).intersection(set(last_scaled_pts)):
+          """
           dist = euclidean(last_scaled_pts[id_], scaled_points[id_])
           dist = dist*86.787/360 # convert pixels to meters (824px = 200m)
+          if id_ in speeds.keys():
+            speeds[id_].append((dist/0.1)*3.6)
+          else:
+            speeds[id_] = [(dist/0.1)*3.6]
+          """
+          dist = geopy.distance.geodesic(last_scaled_pts[id_], scaled_points[id_]).meters
           if id_ in speeds.keys():
             speeds[id_].append((dist/0.1)*3.6)
           else:

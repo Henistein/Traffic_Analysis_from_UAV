@@ -33,6 +33,15 @@ class GeoRef:
     point.AddPoint(lon, lat)
     point.Transform(self.transform)
     return self._coords_to_pixels(point.GetX(), point.GetY())
+  
+  def pixels_to_coords(self, pixel, line):
+    ul_x = self.geo_matrix[0]
+    ul_y = self.geo_matrix[3]
+    x_dist = self.geo_matrix[1]
+    y_dist = self.geo_matrix[5]
+    x = pixel*x_dist + ul_x
+    y = line*y_dist + ul_y
+    return x, y
 
 class GeoInterpolation:
   def __init__(self, lat_north, long_west, lat_south, long_east, lat_center, long_center, image):
@@ -75,11 +84,16 @@ class GeoInterpolation:
 
 
 class MapDrone:
+  # DJI Phantom 4 Pro V2 parameters
+  # https://docs.google.com/spreadsheets/d/1w5PXRstTtZ0xMOewYdNrtzpvyVXHISPNwa65XuqcXEI/edit#gid=0
+  SENSOR_WIDTH = 13.2 # mm
+  FOCAL_LENGTH = 8.8 # mm
+  IMAGE_WIDTH = 5477
+  IMAGE_HEIGHT = 3612
+  # frame
   FRAME_WIDTH = 1280
   FRAME_HEIGHT = 720
-  FOOTPRINT_WIDTH = 200
-  FOOTPRINT_HEIGHT = 120
-  def __init__(self, geo):
+  def __init__(self, drone_data, geo, n_frames):
     self.geo = geo
     self.map = self.geo.image
     # resized map (1280x720)
@@ -87,10 +101,27 @@ class MapDrone:
     w,h = int(geo.image.shape[1]/self.scale[0]), int(geo.image.shape[0]/self.scale[1])
     self.resized_map = cv2.resize(self.map, (w,h), cv2.INTER_AREA)
     # extract drone data
-    data = pd.read_csv('filtered_data.csv')
-    self.latitude_list = data["latitude"][:2800].tolist()
-    self.longitude_list = data["longitude"][:2800].tolist()
-    self.compass_heading_list = data[" compass_heading(degrees)"][:2800].tolist()
+    data = pd.read_csv(drone_data)
+    max_data = int(n_frames//3)
+    self.latitude_list = data["latitude"][:max_data].tolist()
+    self.longitude_list = data["longitude"][:max_data].tolist()
+    self.compass_heading_list = data[" compass_heading(degrees)"][:max_data].tolist()
+    self.height_list = data["height_above_takeoff(feet)"][:max_data].tolist()
+    # feet to meters
+    self.height_list = [h*0.3048 for h in self.height_list]
+    # ground sample distance
+    self.gsd = None
+    self.FOOTPRINT_WIDTH = None
+    self.FOOTPRINT_HEIGHT = None
+  
+  def _update_footprint_values(self, height):
+    """
+    Update the footprint values
+    :param height: drone height
+    """
+    self.gsd = (self.SENSOR_WIDTH*height)*100/(self.FOCAL_LENGTH*self.IMAGE_WIDTH)
+    self.FOOTPRINT_WIDTH = (self.gsd*self.IMAGE_WIDTH)/100
+    self.FOOTPRINT_HEIGHT = (self.gsd*self.IMAGE_HEIGHT)/100
 
   def rotate_camera(self, center, angle, pts):
     """
@@ -198,7 +229,8 @@ class MapDrone:
     :param k: index of the data
     @return: latitude, longitude, compass_heading
     """
-    return self.latitude_list[k], self.longitude_list[k], self.compass_heading_list[k]
+    return self.latitude_list[k], self.longitude_list[k], \
+           self.compass_heading_list[k], self.height_list[k]
 
   def get_next_data(self, k, idcenters):
     """
@@ -209,7 +241,7 @@ class MapDrone:
     :param idcenters: list frame object centers
     """
     resized_map = self.resized_map.copy()
-    lat,lon,heading = self.get_data(k)
+    lat,lon,heading,height = self.get_data(k)
 
     # convert drone current position to map coordinates
     x,y = self.geo.coords_to_pixels(lat,lon)
@@ -224,9 +256,13 @@ class MapDrone:
     - Scale them to the resized map
     VIDEO_FRAME -> FOOTPRINT -> MAP -> RESIZED_MAP
     """
+    # update drone footprint
+    height = 57
+    #height = 90
+    self._update_footprint_values(height)
     ftp_lat, ftp_lon = self._add_distance_to_coordinates(
       lat, lon, 
-      MapDrone.FOOTPRINT_HEIGHT/2, MapDrone.FOOTPRINT_WIDTH/2
+      self.FOOTPRINT_HEIGHT/2, self.FOOTPRINT_WIDTH/2
     )
     # convert ftp_lat and ftp_lon to map coordinates
     ftp_x,ftp_y = self.geo.coords_to_pixels(ftp_lat,ftp_lon)
@@ -250,16 +286,29 @@ class MapDrone:
 
     # convert video frame points to cropped footprint and then to map coordinates
     scaled_pts = {}
+    H = np.array([[2.84007686e-01,  3.66806294e-01,  2.79664922e+02],
+                  [-2.87005693e-01,  2.18658225e-01,  3.85643520e+02],
+                  [-3.48167035e-06, - 1.39063210e-05,  1.00000000e+00]])
     for k,pt in idcenters.items():
-      # scaling the video frame points to cropped footprint 
-      pt = (pt[0]/ftp_scale_x, pt[1]/ftp_scale_y)
-      # convert from cropped footprint to map coordinates
-      pt = (pt[0]+incx, pt[1]+incy)
-      # rotate points to match drone heading
-      pt = self.rotate_camera((rx,ry), heading, [pt])[0]
-      # draw point on resized map
+      # multiply point by homography matrix
+      pt = [pt[0],pt[1],1]
+      res = np.dot(H,pt)
+      pt = [res[0]/res[2],res[1]/res[2]]
       resized_map = cv2.circle(resized_map,(int(pt[0]),int(pt[1])),radius=3,color=(0,255,0),thickness=-1)
-      # save points in original map scale
-      scaled_pts[k] = (pt[0]*self.scale[0],pt[1]*self.scale[1])
+      # convert pixel to lat and lon
+      pt = self.geo.pixels_to_coords(pt[0],pt[1])
+      scaled_pts[k] = pt
+
+      if 1 == 0:
+        # scaling the video frame points to cropped footprint 
+        pt = (pt[0]/ftp_scale_x, pt[1]/ftp_scale_y)
+        # convert from cropped footprint to map coordinates
+        pt = (pt[0]+incx, pt[1]+incy)
+        # rotate points to match drone heading
+        pt = self.rotate_camera((rx,ry), heading, [pt])[0]
+        # draw point on resized map
+        resized_map = cv2.circle(resized_map,(int(pt[0]),int(pt[1])),radius=3,color=(0,255,0),thickness=-1)
+        # save points in original map scale
+        scaled_pts[k] = (pt[0]*self.scale[0],pt[1]*self.scale[1])
 
     return resized_map,footprint,scaled_pts
