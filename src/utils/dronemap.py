@@ -3,6 +3,7 @@ import numpy as np
 import cv2
 import pandas as pd
 from osgeo import osr, ogr, gdal
+import geopy
 
 class GeoRef:
   # https://stackoverflow.com/questions/58623254/find-pixel-coordinates-from-lat-long-point-in-geotiff-using-python-and-gdal
@@ -93,13 +94,12 @@ class MapDrone:
   # frame
   FRAME_WIDTH = 1280
   FRAME_HEIGHT = 720
+  # resized map 
+  RESIZED_MAP_WIDTH = 1280
+  RESIZED_MAP_HEIGHT = 610
   def __init__(self, drone_data, geo, n_frames):
     self.geo = geo
     self.map = self.geo.image
-    # resized map (1280x720)
-    self.scale = [self.map.shape[1]/self.FRAME_WIDTH, self.map.shape[0]/self.FRAME_HEIGHT]
-    w,h = int(geo.image.shape[1]/self.scale[0]), int(geo.image.shape[0]/self.scale[1])
-    self.resized_map = cv2.resize(self.map, (w,h), cv2.INTER_AREA)
     # extract drone data
     data = pd.read_csv(drone_data)
     max_data = int(n_frames//3)
@@ -198,19 +198,10 @@ class MapDrone:
     box = cv2.boxPoints(rect)
     box = np.int0(box)
 
-    # draw camera on small image
-    cv2.drawContours(img,[box],0,(0,0,255),2)
-
-    # get image crop from big image
-    rect = list(rect)
-    rect[0] = list(rect[0])
-    rect[1] = list(rect[1])
-    rect[0][0] = rect[0][0]*self.scale[0]
-    rect[1][0] = rect[1][0]*self.scale[0]
-    rect[0][1] = rect[0][1]*self.scale[1]
-    rect[1][1] = rect[1][1]*self.scale[1]
+    # draw footprint on the map
+    cv2.drawContours(img,[box],0,(0,0,255),thickness=10)
     
-    footprint,_,_ = self._crop_rect(self.map,rect)
+    footprint,_,_ = self._crop_rect(self.map.copy(),rect)
 
     # rotate image to match drone perspective
     if angle >= 270 or angle == 0:
@@ -222,6 +213,15 @@ class MapDrone:
       footprint = cv2.rotate(footprint, cv2.cv2.ROTATE_90_COUNTERCLOCKWISE)
 
     return img,footprint
+
+  def scale(self, x_meters):
+    # scale(X meters) = Y pixels
+    # 100 pixels
+    lat1, lon1 = self.geo.pixels_to_coords(0, 0)
+    lat2, lon2 = self.geo.pixels_to_coords(0, 100)
+    # calculate distance in meters
+    dist = geopy.distance.geodesic((lat1, lon1), (lat2, lon2)).meters
+    return 100*x_meters/dist
 
   def get_data(self, k):
     """
@@ -240,64 +240,54 @@ class MapDrone:
     :param k: index of the drone data list
     :param idcenters: list frame object centers
     """
-    resized_map = self.resized_map.copy()
+    mapp = self.map.copy()
     lat,lon,heading,height = self.get_data(k)
 
     # convert drone current position to map coordinates
     x,y = self.geo.coords_to_pixels(lat,lon)
-    # scale xy to resized map
-    rx,ry = int(x/self.scale[0]),int(y/self.scale[1])
-    # draw xy on the resized map
-    resized_map = cv2.circle(resized_map,(rx,ry),radius=3,color=(0,0,255),thickness=-1)
+    # draw xy on the map
+    mapp = cv2.circle(mapp,(x,y),radius=3,color=(0,0,255),thickness=10)
 
-    """
-    - Calculate latitudes and longitudes of the drone footprint
-    - Convert them to pixels
-    - Scale them to the resized map
-    VIDEO_FRAME -> FOOTPRINT -> MAP -> RESIZED_MAP
-    """
     # update drone footprint
-    height = 57
-    #height = 90
+    height = 60
+    #height = 125
     self._update_footprint_values(height)
-    ftp_lat, ftp_lon = self._add_distance_to_coordinates(
-      lat, lon, 
-      self.FOOTPRINT_HEIGHT/2, self.FOOTPRINT_WIDTH/2
-    )
-    # convert ftp_lat and ftp_lon to map coordinates
-    ftp_x,ftp_y = self.geo.coords_to_pixels(ftp_lat,ftp_lon)
-    # scale ftp_x and ftp_y to resized map
-    ftp_x,ftp_y = int(ftp_x/self.scale[0]),int(ftp_y/self.scale[1])
 
-    # calculate pixel distance from the center of the frame to the edge (resized map)
-    dist_w, dist_h = abs(rx-ftp_x), abs(ry-ftp_y)
-    # draw footprint on the resized map
-    resized_map,footprint = self.draw_drone_footprint((rx,ry),heading,resized_map,dist_w,dist_h)
+    # convert footprint to pixels
+    ftp_X_px, ftp_Y_px = self.scale(self.FOOTPRINT_WIDTH/2), self.scale(self.FOOTPRINT_HEIGHT/2)
+
+    # draw footprint on the map
+    mapp,footprint = self.draw_drone_footprint((x,y),heading,mapp,ftp_X_px,ftp_Y_px)
 
     """
     Convert video frame points to map coordinates
     - Scale video frame points to cropped footprint
     """
     # scale used to map video frame points to cropped footprint
-    ftp_scale_x = MapDrone.FRAME_WIDTH/(dist_w*2)
-    ftp_scale_y = MapDrone.FRAME_HEIGHT/(dist_h*2)
+    ftp_scale_x = MapDrone.FRAME_WIDTH/(ftp_X_px*2)
+    ftp_scale_y = MapDrone.FRAME_HEIGHT/(ftp_Y_px*2)
     # auxiliar variables to convert from footprint to map coordinates
-    incx, incy = rx-dist_w, ry-dist_h
+    incx, incy = x-ftp_X_px, y-ftp_Y_px
 
     # convert video frame points to cropped footprint and then to map coordinates
     scaled_pts = {}
-    H = np.array([[2.84007686e-01,  3.66806294e-01,  2.79664922e+02],
-                  [-2.87005693e-01,  2.18658225e-01,  3.85643520e+02],
-                  [-3.48167035e-06, - 1.39063210e-05,  1.00000000e+00]])
+    H = np.array([[1.22435777e+00, 2.30184713e-01, -2.39075325e+02],
+                  [1.65445651e-01,  1.26741124e+00, -1.18632417e+02],
+                  [7.14800882e-05,  3.33141918e-05,  1.00000000e+00]])
+    h_scaleX, h_scaleY = (1905/1280), (1255/843)
+
     for k,pt in idcenters.items():
       # multiply point by homography matrix
-      pt = [pt[0],pt[1],1]
-      res = np.dot(H,pt)
-      pt = [res[0]/res[2],res[1]/res[2]]
-      resized_map = cv2.circle(resized_map,(int(pt[0]),int(pt[1])),radius=3,color=(0,255,0),thickness=-1)
-      # convert pixel to lat and lon
-      pt = self.geo.pixels_to_coords(pt[0],pt[1])
-      scaled_pts[k] = pt
+      if 1 == 1:
+        pt = [pt[0],pt[1],1]
+        res = np.dot(H,pt)
+        pt = [res[0]/res[2],res[1]/res[2]]
+        pt = (pt[0]*h_scaleX, pt[1]*h_scaleY)
+        pt = (pt[0]+incx, pt[1]+incy)
+        pt = self.rotate_camera((x,y), heading, [pt])[0]
+        mapp = cv2.circle(mapp,(int(pt[0]),int(pt[1])),radius=5,color=(0,255,0),thickness=5)
+        # convert pixel to lat and lon
+        scaled_pts[k] = self.geo.pixels_to_coords(pt[0],pt[1])
 
       if 1 == 0:
         # scaling the video frame points to cropped footprint 
@@ -305,10 +295,12 @@ class MapDrone:
         # convert from cropped footprint to map coordinates
         pt = (pt[0]+incx, pt[1]+incy)
         # rotate points to match drone heading
-        pt = self.rotate_camera((rx,ry), heading, [pt])[0]
-        # draw point on resized map
-        resized_map = cv2.circle(resized_map,(int(pt[0]),int(pt[1])),radius=3,color=(0,255,0),thickness=-1)
-        # save points in original map scale
-        scaled_pts[k] = (pt[0]*self.scale[0],pt[1]*self.scale[1])
+        pt = self.rotate_camera((x,y), heading, [pt])[0]
+        # draw point on map
+        mapp = cv2.circle(mapp,(int(pt[0]),int(pt[1])),radius=3,color=(0,255,0),thickness=10)
+        # convert points to lat and lon
+        scaled_pts[k] = self.geo.pixels_to_coords(pt[0],pt[1])
 
-    return resized_map,footprint,scaled_pts
+    # resize mapp
+    mapp = cv2.resize(mapp,(MapDrone.RESIZED_MAP_WIDTH,MapDrone.FRAME_HEIGHT))
+    return mapp,footprint,scaled_pts
