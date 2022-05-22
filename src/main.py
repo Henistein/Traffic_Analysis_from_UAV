@@ -36,7 +36,7 @@ class Video:
 
 # auxiliar methods
 def filter_current_ids(idcenters, current_ids):
-  return {k:idcenters[k] for k in current_ids if k != -1}
+  return {k:idcenters[k]["last"] for k in current_ids if k != -1}
 
 def run(model, opt):
   inf = Inference(model=model, device='cuda', imsize=opt.img_size, iou_thres=opt.iou_thres, conf_thres=opt.conf_thres)
@@ -164,6 +164,7 @@ def run(model, opt):
       detections.current[:, 2:6] = xywh2xyxy(detections.current[:, 2:6])
 
     # MAP
+    if frame_id == 220: break
     if frame_id % 3 == 0:
       map_img, img_crop, scaled_points = teste.get_next_data(k,filter_current_ids(detections.idcenters,detections.current[:, 1]))
       # resize img_crop to 1280x720
@@ -172,14 +173,6 @@ def run(model, opt):
       if last_scaled_pts is not None:
         # calulate euclidean distance
         for id_ in set(scaled_points).intersection(set(last_scaled_pts)):
-          """
-          dist = euclidean(last_scaled_pts[id_], scaled_points[id_])
-          dist = dist*86.787/360 # convert pixels to meters (824px = 200m)
-          if id_ in speeds.keys():
-            speeds[id_].append((dist/0.1)*3.6)
-          else:
-            speeds[id_] = [(dist/0.1)*3.6]
-          """
           dist = geopy.distance.geodesic(last_scaled_pts[id_], scaled_points[id_]).meters
           if id_ in speeds.keys():
             speeds[id_].append((dist/0.1)*3.6)
@@ -226,6 +219,9 @@ def run(model, opt):
   if opt.video_out:
     # save video
     video.writer.release()
+  
+  print(speeds[3])
+
   video.cap.release()
   cv2.destroyAllWindows()
 

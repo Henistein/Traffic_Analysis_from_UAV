@@ -9,8 +9,9 @@ from utils.conversions import xywh2xyxy, scale_coords
 
 class DetectionsMatrix:
   """
-  Manages the detections and labels matrix in MOT format
+  Stores the detections and labels matrix in MOT format
   MOT format: [frame_id id x y w h conf cls]
+  Calculates data from the detections such as (id centers)
   """
   def __init__(self, classes_to_eval, classnames):
     self.frame_id = 1 # initial frame id
@@ -66,7 +67,13 @@ class DetectionsMatrix:
       x1,y1,x2,y2 = det[2:6]
       pt = (int((x1+x2)/2), int((y1+y2)/2))
       # add assign id with respective points
-      self.idcenters[id_] = pt
+      if id_ not in self.idcenters.keys():
+        self.idcenters[id_] = {"all":{}, "last":None}
+      if pt in self.idcenters[id_]["all"]:
+        self.idcenters[id_]["all"][pt] += 1
+      else:
+        self.idcenters[id_]["all"][pt] = 1
+      self.idcenters[id_]["last"] = pt
 
 class Annotator:
   FONT_SIZE = 0.6
