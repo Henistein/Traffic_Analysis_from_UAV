@@ -93,7 +93,7 @@ class Inference:
 
 
   @staticmethod
-  def subjective(stats, threshold=0.50, **kwargs):
+  def subjective(stats=None, threshold=0.50, **kwargs):
     """
     stats: stats
     kwargs: detections, scaled labels x1y1x2y2, img, annotator, classnames
@@ -103,21 +103,21 @@ class Inference:
     detections, labels, img, annotator, classnames = \
     kwargs['detections'], kwargs['labels'], kwargs['img'], kwargs['annotator'], kwargs['classnames']
 
-    stats_res = Inference.compute_stats(stats)
-    if len(stats_res) == 1:
-      stats_res = 4*[0]
-    mp, mr, map50, map = stats_res
+    if stats is not None:
+      stats_res = Inference.compute_stats(stats)
+      if len(stats_res) == 1:
+        stats_res = 4*[0]
+      mp, mr, map50, map = stats_res
 
-    if map50 < threshold:
       print(f"mAP50: {map50}")
-      
-      # get detections images and labels image with bb
-      annotator.add_image(img.copy())
-      det_img = Inference.attach_detections(annotator, detections, classnames, label="I")
-      annotator.add_image(img.copy())
-      lab_img = Inference.attach_detections(annotator, labels, classnames, label="I")
+    
+    # get detections images and labels image with bb
+    annotator.add_image(img.copy())
+    det_img = Inference.attach_detections(annotator, detections, classnames, label="I")
+    annotator.add_image(img.copy())
+    lab_img = Inference.attach_detections(annotator, labels, classnames, label="I")
 
-      # concatenate det_img and lab_img vertical
-      res = cv2.hconcat([det_img, lab_img])
-      cv2.imshow('frame', res)
-      cv2.waitKey(0)
+    # concatenate det_img and lab_img vertical
+    res = cv2.hconcat([det_img, lab_img])
+    cv2.imshow('frame', res)
+    cv2.waitKey(1)
