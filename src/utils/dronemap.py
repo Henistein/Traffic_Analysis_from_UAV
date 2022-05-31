@@ -288,7 +288,8 @@ class MapDrone:
 
     scaled_pts = {}
     for k,pt in idcenters.items():
-      if 1 == 1:
+      # superglue
+      if 1 == 0:
         pt = [pt[0],pt[1],1]
         res = np.dot(H,pt)
         pt = [res[0]/res[2],res[1]/res[2]]
@@ -310,7 +311,7 @@ class MapDrone:
         # convert pixel to lat and lon
         scaled_pts[k] = self.geo.pixels_to_coords(pt[0],pt[1])
 
-      if 1 == 0:
+      if 1 == 1:
         # scaling the video frame points to cropped footprint 
         pt = (pt[0]/ftp_scale_x, pt[1]/ftp_scale_y)
         # convert from cropped footprint to map coordinates

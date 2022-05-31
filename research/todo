@@ -1,3 +1,20 @@
-- Comparar SSD, R-CNN e YOLO
-- Explicar as vantagens de usar YOLO 
-- Comparar os varios YOLOs (v3, v4, v5)
+Relatorio:
+- Eliminar plagio < 30 ?
+- DeepSort e StrongSort
+- Metrics, mAP, MOTA, HOTA
+- Kalman Filter
+- SuperGlue
+- Fazer uma conclusao comparativa final sobre os detetores (YOLOvx, SSD, Faster R-CNN), usar a boa_informacao.pdf
+- Pormenores (INTRODUCOES) (acronimos, citations, captions...)
+
+Codigo:
+  - Filtro da estrada
+  - Fazer output do video com as velocidades medias
+  - Fazer heatmap
+
+Geral:
+  (De manha)
+  - Avaliar todos os datasets de teste de tracking (estatisticas)
+  - Avaliar o dataset de detection do visdrone usando o yolov5, o tph-yolov5 e extrair os resultados para  o relatorio, seria bom conseguir implementar o faster-rcnn (https://github.com/oulutan/Drone_FasterRCNN)
+  - Treinar com os dados de treino + test-dev, shuffle neles todos
+  - Ver resultados ground truth

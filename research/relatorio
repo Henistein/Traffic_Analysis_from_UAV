@@ -1,0 +1,112 @@
+---------------------------RCNN----------------------------
+R-CNN (paperRCNN) was proposed by Ross Girshick in 2014 with the aim of improving the quality of candidate bounding boxes and to take a deep architecture to extract high-level features.
+R-CNN is divided in three stages:
+A Region proposal generation, where it is used a selective search algorithm to generate about 2000 region proposals for each image.
+A CNN to extract features, in this each region proposal is cropped into a fixed resolution, then the CNN module extracts a 4096 dimensional feature, due CNN power a robust feature representatioon for each proposal can be obtained.
+Classification and localization, the feature vector is run through a collection of linear support vector machines (SVM), where each SVM is responsible classify a single object class and indicating the likelihood that the region proposal contains that class. Finally, the scored regions are then adjusted with bounding box regression and filtered with a non max suppression.
+
+-------------------------Fast-RCNN--------------------------
+In this model, the whole image is processed with convolutional and max pooling layers to produce a conv feature map.Then a fixed-length feature vector is extracted from each region proposal with a region of interest (RoI) pooling layer. Each feature vector is fed into a sequence of fully connected (fc) layers, before finally branching into two sibling output layers. There is two output layers, one is responsible for producing softmax probabilities for all C+1 categories (C object classes plus one 'background' class), the other output layer encodes refined bounding-box positions with four real-valued numbers. Except the generation of region proposals, all of these parameters are optimized via multi-task loss in a end-to-end way.
+
+---------------------------------------------------YOLO----------------------------------------------------------------------
+sources: https://arxiv.org/pdf/1506.02640.pdf | https://medium.com/analytics-vidhya/yolo-explained-5b6f4564f31
+YOLO (You Only Look Once) (paper), proposed by Joseph Redmon in 2016, is a CNN that performs both classification and prediction of bounding boxes for detected objects. These bounding boxes would evaluate the intended probabilities with high accuracy while still being able to run in real time. It looks at the entire image at once, hence the name You Only Look Once, which allows it to capture the context of detected objects, this halves the number of false-positives detections it maker over R-CNNs which look at different parts of the image separately.
+
+(imagem do dog, truck bike)
+
+YOLO divides the input image into SxS grid, if the center of an object falls into a grid cell, that grid cell is responsible for detecting that object. Each cell will predict B bounding boxes and a confidence score for each box, this confidence level is between 0.0 and 1.0, and it reflects how confident the model is that the box contains an object and how accurate it thinks the box is that it predicts. This confidence represents the IOU between the predicted bounding box and the ground truth box, IOU stands for Intersection Over Union and is the area of the intersection of these two boxes (predicted and ground truth) divided by the area of the union of the same boxes.
+Each bounding box consists of 5 predictions: x, y, w, h, and the confidence, where thr (x,y) coordinates represent the center of the box relative to the bounds of the grid cell and (w, h) are the width and height predicted relative to the whole image. Thus, each prediction from the grid cell will be of shape C + B * 5, where C is the number of classes and B is the number of predicted bounding boxes, it is multiplied by 5 because it includes (x, y, w, h, confidence). Since there are SxS grid cells in each image, the prediction of the model is a tensor with a shape of SxSx(C+B*5).
+The YOLO architecture consists of three key components: the head, the neck and backbone. The backbone is made up of convolutional layers and is responsible to extract the features from the image while the fully connected layers (neck) predict the output probabilities and coordinates. The head is the final output layer of the network which can be interchanged with other layers with the same input shape for transfer learning.
+
+-------------------------------SSD--------------------------
+source: boa_informacao.pdf
+
+SSD (Single Shot MultiBox Detector), proposed by Liu et al. (paper), aimed to solve the YOLO limitations. The model was inspired by anchors adopted in MultiBox (paper), RPN and multi-scale representation (paper).
+Instead of fixed grids adopted in YOLO, the SSD takes advantage of a set of default anchor boxes with different aspect ratios and scales to discretize the output space of bounding boxes. To handle objects with various sizes, the network fuses predictions from multiplt feature map with different resolutions.
+
+-----------------------------YOLOv2-------------------------
+source: https://jonathan-hui.medium.com/real-time-object-detection-with-yolo-yolov2-28b1b93e2088#:~:text=Comparing%20with%20region%20based%20detectors,significantly%20while%20making%20it%20faster
+
+YOLOv2 (paper) was a joint envevor by Joseph Redmin and Ali Farhadi, and it is the second version of the YOLO with the objective of improving the accuracy significantly while making it faster. The accuracy improvements are:
+
+- Batch normalization - By adding batch normalization on all of the convolutional layers it helps regularize the model and pushes up 2% im mAP. This removes the need for droputs without overfitting.
+- High Resolution Classifer - The original YOLO trains the classifier network at 224x224 and increases the resolution to 448 for detection. YOLOv2 starts with 224x224 pictures for the classifer training but then retune the classifier again with 448x488 pictures using much fewer epochs. This makes the detector training easier and moves mAP up by 4%.Add batch normalization in convolution layers. This removes the need for dropout and pushes mAP up 2%.
+- Convulutional With Anchor Boxes - YOLO predicts the coordinates of bounding boxes directly using fully connected layers on top of the convolutional feature extractor. In YOLOv2 this fully connected layers were removed and anchor boxes are used to predict bounding boxes. One pooling layer was eliminated to make the output of the network's convolutional layers higher resolution. Also, the network was shrinked to operate on 416 input images instead of 448x448. This creates an odd number spatial dimension. The center of a picture is often occupied by a large object. With an odd number grid cell, it is more certain on where the object belongs. Anchor boxes decreased mAP slightly from 69.5 to 69.2, but the recall improves from 81% to 88%, even the accuracy is slightly decreased but it increases the chances of detecting all the ground truth objects.
+- Dimension Clusters - Since the boundary boxes have strong patternsm K-means clustering is used to identify the top-K boundary boxes that have the best coverage for the training data.
+- Direct location prediction - YOLOv2 makes predictions on the offsets to the anchors, if it is unconstrained the guesses will be randomized again.
+- Fine-Grained Features - Convolution layers decrease the spatial dimension gradually. As the corresponding resolution decreases, it is harder to detect small objects. YOLOv2 reshapes the 26x26x512 layer to 13x13x2048. Then it concatenates with the original 13x13x1024 output layer, finally it is applyed convolution filters on the new 13x13x3072 layer to make predictions.
+- Multi-Scale Training - Once the fully connected layers were removed, YOLOv2 can take images of different sizes, the width and height just need to me multiple of 32.
+
+
+-----------------------------------------YOLOv3------------------------------------------
+source: https://towardsdatascience.com/yolo-v3-object-detection-53fb7d3bfe6b#:~:text=YOLO%20v3%20now%20performs%20multilabel,been%20modified%20in%20YOLO%20v3.
+
+YOLOv3 (paper) released in 2018 by Joseph Redmon and Ali Farhadi with the aim of improving YOLOv2. The main improvements are:
+
+- Bounding Box Prediction - YOLOv3 predicts an objectness score for each bounding box using logistic regression. YOLOv3 changes the way in calculating the cost function. If the anchor overlaps a ground truth object more than other, the corresponding objectness score should be 1, for the others with overlap greater than a predefined threshold of 0.5 are ignored. If an anchor is not assigned, it incurs no classification and localization lost, just confidence loss on objectness. 
+
+- Class Prediction - YOLOv3 do not use softmax, instead it simply uses independent logistic classifiers. During training it is used binary cross-entropy loss for the class predictions.
+
+- Predictions Across Scales - YOLOv3 makes 3 predictions per location. Each prediction is composed of a boundary box, an objectness and 80 class scores, i.e. N × N × [3 × (4 + 1 + 80) ] predictions.
+
+- Feature Extractor - Instead of the Darknet-19 used in YOLOv2, YOLOv3 uses a 53-layer Darknet-53 mainly compose of 3x3 and 1x1 filters with skip connections like the residual networks in ResNet. This feature extractor has less BFLOP (billion floating point operations) than ResNet-152 (paper), but achieves the same classification accuracy at 2x faster.
+
+---------------------------YOLOv4--------------------------
+source: https://jonathan-hui.medium.com/yolov4-c9901eaa8e61 | https://ai-pool.com/a/s/yolov3-and-yolov4-in-object-detection#:~:text=Yolov4%20is%20an%20improvement%20on,prediction%2C%20and%20the%20sparse%20prediction.
+
+YOLOv4 (paper) was released by Alexey Bochoknovskiy, Chien-Yao Wang, and Hong-Yuan Mark Liao in 2020 and presents several improvements to the predecessor YOLOv3 model. It increased the mAP by as much as 10% and the number of frames per second by 12%.
+In the backbone, the main improvement feature extractor is the CSP connections (paper https://arxiv.org/pdf/1911.11929.pdf) above with the Darknet-53, which is used to split the current layer into two parts, one to pass through convolution layers and the other that would not pass through convolutions, after which the results are aggregated. The CSPDarknet-53 model has higher accuracy in object detection compared with ResNet based designs even they have better classification performance.
+(imagem da CSPDArkNet)
+
+The neck helps to add layers between the backbone and the dense prediction block (head), like in the ResNet architecture (ResNet paper). The YOLOv4 architecture uses a modified Path aggregation network, a modified spatial attention module, and a modified spatial pyramid pooling, all are used to aggregate the information to improve accuracy.
+
+The head is used for locating bounding boxes and for classification same as in YOLOv3.
+
+The YOLOv4's authors used other techniques to improve the accuracy during training and afterward, they are the bag of freebies (helps during training without increasing inference time) and bag of specials (changes the architecture and increases the inference time by a little bit). 
+
+The bag of freebies has 2 techniques, one is in the backbone which uses the cut mix and mosiac for data augmentation and drop block for regularization, and the second is in detection, which adds more to the backbone, such as self-adversarial training and random training shapes.
+
+The bag of specials has also 2 techniques, the first is in the backbone which uses the mish activation and cross-stage partial connections, the second is in detection, which uses the SPP-block, the SAM block, and others.
+
+-----------------------------YOLOv5------------------------
+source: https://github.com/ultralytics/yolov5 | file:///home/henistein/Downloads/sensors-22-00464.pdf
+
+YOLOv5 was released shortly after the YOLOv4 in 2020 by Glenn Jocher using the Pytorch framework. The main difference is that YOLOv5 uses Focus Structure with CSPdarknet-53 as a backbone. The Focus layer is first introduces in YOLOv5 and it replaces the first three layers in the YOLOv3 algorithm. The advantage of using a Focus layer is reduced required CUDA memory, reduced layer, increased forward propagation, and backpropagation (https://github.com/ultralytics/yolov5/discussions/3181m1).
+
+
+
+----------------------------------------Object detection Intro-------------------------------------------------------------
+Object detection is seen as one of the most fundamental problems of computer vision. The objective of this task is to build computational models capable of locating objects in digital images as well as their classification (dog, human, car). In fact, the rapid development of deep learning technologies allowed the emergence of several models referring to this task.
+These models are grouped into two types, the multiple-stage models and the single-stage models.
+
+Multi-stage models prioritizes detection accuracy. In these, a first stage is responsible for extracting regions from objects and a second stage is used to classify and improve the object's location in the image. This method works well, but on the other hand it becomes slower as it requires performing the detection and classification process on various occasions. The most popular models are R-CNN, Fast R-CNN and Faster R-CNN.
+
+Single-stage models prioritizes inference speed. Typically, these methods propose several bounding boxes of different scales in the image, in order to reach a trade-off between speed and accuracy. This technique relies on a convolutional network to recognize and locate the object, all just in forward propagation. Thus, this type of models are usually faster than the two-stage models, but on the other hand, they have less accuracy. The most popular models are the YOLO and the SSD.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

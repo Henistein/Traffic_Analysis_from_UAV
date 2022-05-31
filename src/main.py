@@ -101,8 +101,8 @@ def run(model, opt):
   
   if mapp_file is not None:
     # drone map
-    geo = GeoRef(opt.map_image)
-    teste = MapDrone(opt.drone_data,geo,video.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    geo = GeoRef(mapp_file)
+    teste = MapDrone(logs_file,geo,video.cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
   isFirst = True
   frame_id = 0 
@@ -173,7 +173,10 @@ def run(model, opt):
 
     # MAP
     if frame_id % 3 == 0 and mapp_file is not None:
-      map_img, img_crop, scaled_points = teste.get_next_data(k,filter_current_ids(detections.idcenters,detections.current[:, 1]))
+      map_img, img_crop, scaled_points = teste.get_next_data(
+          k,filter_current_ids(detections.idcenters,detections.current[:, 1]),
+          frame, detections.current[:, 2:6],
+      )
       # resize img_crop to 1280x720
       #img_crop = cv2.resize(img_crop, (1280, 720))
       # speed
