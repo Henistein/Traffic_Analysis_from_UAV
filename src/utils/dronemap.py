@@ -2,8 +2,10 @@ import math
 import numpy as np
 import cv2
 import pandas as pd
-from osgeo import osr, ogr, gdal
 import geopy
+
+from osgeo import osr, ogr, gdal
+from superglue.matcher import Matcher
 
 class GeoRef:
   # https://stackoverflow.com/questions/58623254/find-pixel-coordinates-from-lat-long-point-in-geotiff-using-python-and-gdal
@@ -113,6 +115,8 @@ class MapDrone:
     self.gsd = None
     self.FOOTPRINT_WIDTH = None
     self.FOOTPRINT_HEIGHT = None
+    # matcher (SuperGlue)
+    self.matcher = Matcher()
   
   def _update_footprint_values(self, height):
     """
@@ -232,7 +236,7 @@ class MapDrone:
     return self.latitude_list[k], self.longitude_list[k], \
            self.compass_heading_list[k], self.height_list[k]
 
-  def get_next_data(self, k, idcenters):
+  def get_next_data(self, k, idcenters, frame, detections):
     """
     Process the data from the drone
     Extract the drone footprint from the map
@@ -249,8 +253,8 @@ class MapDrone:
     mapp = cv2.circle(mapp,(x,y),radius=3,color=(0,0,255),thickness=10)
 
     # update drone footprint
-    height = 60
-    #height = 125
+    #height = 60
+    height = 125
     self._update_footprint_values(height)
 
     # convert footprint to pixels
@@ -269,16 +273,33 @@ class MapDrone:
     # auxiliar variables to convert from footprint to map coordinates
     incx, incy = x-ftp_X_px, y-ftp_Y_px
 
-    # convert video frame points to cropped footprint and then to map coordinates
-    scaled_pts = {}
+    # Match footprint with frame (SuperGlue)
+    """
+    H, warped_img  = self.matcher.get_warped_image(frame, footprint, detections)
+    warped_img = warped_img.astype(np.uint8)
+    cv2.imshow('warped_img', warped_img)
+    """
+    """
     H = np.array([[1.22435777e+00, 2.30184713e-01, -2.39075325e+02],
                   [1.65445651e-01,  1.26741124e+00, -1.18632417e+02],
                   [7.14800882e-05,  3.33141918e-05,  1.00000000e+00]])
     h_scaleX, h_scaleY = (1905/1280), (1255/843)
+    """
 
+    scaled_pts = {}
     for k,pt in idcenters.items():
-      # multiply point by homography matrix
       if 1 == 1:
+        pt = [pt[0],pt[1],1]
+        res = np.dot(H,pt)
+        pt = [res[0]/res[2],res[1]/res[2]]
+        pt = (pt[0]+incx, pt[1]+incy)
+        pt = self.rotate_camera((x,y), heading, [pt])[0]
+        mapp = cv2.circle(mapp,(int(pt[0]),int(pt[1])),radius=5,color=(0,255,0),thickness=5)
+        # convert pixel to lat and lon
+        scaled_pts[k] = self.geo.pixels_to_coords(pt[0],pt[1])
+
+      # multiply point by homography matrix
+      if 1 == 0:
         pt = [pt[0],pt[1],1]
         res = np.dot(H,pt)
         pt = [res[0]/res[2],res[1]/res[2]]
@@ -304,3 +325,4 @@ class MapDrone:
     # resize mapp
     mapp = cv2.resize(mapp,(MapDrone.RESIZED_MAP_WIDTH,MapDrone.FRAME_HEIGHT))
     return mapp,footprint,scaled_pts
+
