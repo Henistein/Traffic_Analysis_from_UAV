@@ -7,6 +7,7 @@ from utils.conversions import xyxy2xywh, xywh2xyxy
 from utils.general import DetectionsMatrix, Annotator
 from deep_sort.deep_sort import DeepSort
 import geopy.distance
+import glob
 
 from scipy.spatial.distance import euclidean 
 import matplotlib.pyplot as plt
@@ -32,17 +33,47 @@ class Video:
       self.cap.set(cv2.CAP_PROP_POS_MSEC, start_from)
     if video_out:
       fourcc = cv2.VideoWriter_fourcc(*'XVID')
-      self.writer = cv2.VideoWriter('output.mp4', fourcc, self.fps, (self.width, self.height))
+      self.writer = cv2.VideoWriter('output.avi', fourcc, self.fps, (self.width, self.height))
 
 # auxiliar methods
 def filter_current_ids(idcenters, current_ids):
   return {k:idcenters[k]["last"] for k in current_ids if k != -1}
 
+def process_input_folder(path):
+  """
+  input folder must contain:
+  /logs  -> logs.csv
+  /map   -> map.tif
+  /video -> video.mp4
+  if logs or map not available it just process video
+  """
+  logs = glob.glob(path+'/logs/*')
+  mapp = glob.glob(path+'/map/*')
+  video = glob.glob(path+'/video/*')
+
+  if (len(logs) and len(mapp)) > 0:
+    logs_file = logs[0]
+    mapp_file = mapp[0]
+  else:
+    logs_file = None
+    mapp_file = None
+
+  if len(video) == 0:
+    raise Exception("Video not found inside input folder")
+  video_file = video[0]
+
+  return video_file,logs_file,mapp_file
+
 def run(model, opt):
   inf = Inference(model=model, device='cuda', imsize=opt.img_size, iou_thres=opt.iou_thres, conf_thres=opt.conf_thres)
   classnames = model.names
-  # load deepsort
-  deepsort = DeepSort('osnet_ibn_x1_0_MSMT17', inf.device, strongsort=True)
+
+  # process input
+  video_file,logs_file,mapp_file = process_input_folder(opt.path)
+  if mapp_file is not None:
+    # load deepsort
+    deepsort = DeepSort('osnet_ibn_x1_0_MSMT17', inf.device, strongsort=True)
+
 
   # heatmap
   #heatmap = HeatMap('image_registration/map_rotunda.png')
@@ -66,10 +97,12 @@ def run(model, opt):
     classes_to_eval=model.names,
     classnames=model.names
   )
-  video = Video(video_path=opt.path, start_from=opt.start_from, video_out=opt.video_out)
-  # drone map
-  geo = GeoRef(opt.map_image)
-  teste = MapDrone(opt.drone_data,geo,video.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+  video = Video(video_path=video_file, start_from=opt.start_from, video_out=opt.video_out)
+  
+  if mapp_file is not None:
+    # drone map
+    geo = GeoRef(opt.map_image)
+    teste = MapDrone(opt.drone_data,geo,video.cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
   isFirst = True
   frame_id = 0 
@@ -86,6 +119,9 @@ def run(model, opt):
 
     if not ret:
       print("Can't receive frame (stream end?). Exiting ...")
+      break
+
+    if opt.n_frames == frame_id:
       break
 
     # Background Subtraction
@@ -127,36 +163,8 @@ def run(model, opt):
         detections.current[:, 2:6] = outputs[:, :4] # bboxes xyxy
         detections.current[:, 1] = outputs[:, 4] + 1 # ids
 
-        # add centers to heatmap
-        #heatmap.update_points(detections.current[:, 2:6])
-        # update queue
-        #q.put(heatmap.points_list)
-
-        # Filter just the moving objects
-        if False:
-          frame[mask > 0, 2] = 255
-          bs_bboxes = []
-          for cnt in contours:
-            area = cv2.contourArea(cnt)
-            # threshold
-            if area > 0:
-              x,y,w,h = cv2.boundingRect(cnt)
-              bs_bboxes.append([x,y,w,h])
-
-          if len(bs_bboxes) == 0: continue
-          bs_bboxes = xywh2xyxy(torch.tensor(bs_bboxes))
-          det_bboxes = torch.tensor(detections.current[:, 2:6])
-          iou_matrix = box_iou(det_bboxes, bs_bboxes).numpy()
-          detections.current = detections.current[iou_matrix.sum(axis=1)>0]
-          if detections.current.shape[0] == 0: continue
-          if len(detections.current.shape) == 1:
-            detections.current = detections.current.reshape(1, -1) 
-
-
         # calculate centers of each bbox per id
         detections.update_idcenters()
-        #of.update_centers(idcenters)
-        #of.get_speed_ppixel(annotator)
 
       else:
         detections.current[:, 2:6] = xywh2xyxy(detections.current[:, 2:6])
@@ -164,8 +172,7 @@ def run(model, opt):
       detections.current[:, 2:6] = xywh2xyxy(detections.current[:, 2:6])
 
     # MAP
-    if frame_id == 220: break
-    if frame_id % 3 == 0:
+    if frame_id % 3 == 0 and mapp_file is not None:
       map_img, img_crop, scaled_points = teste.get_next_data(k,filter_current_ids(detections.idcenters,detections.current[:, 1]))
       # resize img_crop to 1280x720
       #img_crop = cv2.resize(img_crop, (1280, 720))
@@ -192,13 +199,13 @@ def run(model, opt):
     # Draw counter
     #frame = cv2.rectangle(frame,(229,307),(231,411),(0,255,0),2)
 
+    # draw detections
+    frame = inf.attach_detections(annotator, detections.current, classnames, label="I" if not opt.just_detector else "CP", speeds=speeds)
     if opt.video_out:
-      video.writer.write(frame)
+      video.writer.write(annotator.image)
     
     # draw 
     if not opt.no_show:
-      # draw detections
-      frame = inf.attach_detections(annotator, detections.current, classnames, label="I" if not opt.just_detector else "CP", speeds=speeds)
       # draw centers
       if len(detections.idcenters): annotator.draw_centers(filter_current_ids(detections.idcenters, detections.current[:, 1]).values())
       if map_img is not None: cv2.imshow('map_img', map_img)
@@ -220,8 +227,6 @@ def run(model, opt):
     # save video
     video.writer.release()
   
-  print(speeds[3])
-
   video.cap.release()
   cv2.destroyAllWindows()
 
