@@ -1,2 +1,0 @@
-- https://github.com/MaryamBoneh/Vehicle-Detection (YOLOv5)
-- https://github.com/ahmetozlu/vehicle_counting_tensorflow (SSD-MobileNet)

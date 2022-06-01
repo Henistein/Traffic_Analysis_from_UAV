@@ -13,8 +13,4 @@ Codigo:
   - Fazer heatmap
 
 Geral:
-  (De manha)
-  - Avaliar todos os datasets de teste de tracking (estatisticas)
-  - Avaliar o dataset de detection do visdrone usando o yolov5, o tph-yolov5 e extrair os resultados para  o relatorio, seria bom conseguir implementar o faster-rcnn (https://github.com/oulutan/Drone_FasterRCNN)
   - Treinar com os dados de treino + test-dev, shuffle neles todos
-  - Ver resultados ground truth
