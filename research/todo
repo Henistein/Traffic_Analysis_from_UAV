@@ -14,3 +14,5 @@ Codigo:
 
 Geral:
   - Treinar com os dados de treino + test-dev, shuffle neles todos
+
+https://github.com/rlabbe/Kalman-and-Bayesian-Filters-in-Python/blob/master/13-Smoothing.ipynb
