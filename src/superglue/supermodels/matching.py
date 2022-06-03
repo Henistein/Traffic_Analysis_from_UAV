@@ -41,6 +41,7 @@
 # %BANNER_END%
 
 import torch
+torch.manual_seed(420)
 
 from .superpoint import SuperPoint
 from .superglue import SuperGlue

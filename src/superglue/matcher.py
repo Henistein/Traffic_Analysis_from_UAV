@@ -53,6 +53,11 @@ class Matcher:
 
     return mkpts0, mkpts1
   
+  def draw_points(self, mkpts, frame):
+    for mkp in mkpts:
+      cv2.circle(frame, (int(mkp[0]), int(mkp[1])), 2, (0, 255, 0), -1)
+    return frame
+  
   def filter_mkps(self, mkpts1, mkpts2, detections):
     new_mkpts1 = []
     new_mkpts2 = []
@@ -77,10 +82,22 @@ class Matcher:
     # match frames
     mkpts0, mkpts1 = self.matching()
     mkpts0, mkpts1 = self.filter_mkps(mkpts0, mkpts1, detections)
+    if len(mkpts0) > 0:
+      # draw points
+      #frame0 = self.draw_points(mkpts0, frame0)
+      #frame1 = self.draw_points(mkpts1, frame1)
+      #cv2.imshow('frame0', frame0)
+      #cv2.imshow('frame1', frame1)
+      #cv2.waitKey(0)
+      pass
     # find homography
-    H, _ = cv2.findHomography(mkpts0, mkpts1, cv2.RANSAC, 5.0)
-    res = cv2.warpPerspective(self.image0, H, (self.image1.shape[1], self.image1.shape[0]))
-    return H, res
+    if len(mkpts0) > 4:
+      H, _ = cv2.findHomography(mkpts0, mkpts1, cv2.RANSAC, 1.0)
+      if H is None:
+        return None, res
+      res = cv2.warpPerspective(self.image0, H, (self.image1.shape[1], self.image1.shape[0]))
+      return H, res
+    return None, None
 
 
 if __name__ == '__main__':

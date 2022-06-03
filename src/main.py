@@ -5,7 +5,8 @@ from tqdm import tqdm
 from opts import OPTS
 from utils.conversions import xyxy2xywh, xywh2xyxy
 from utils.general import DetectionsMatrix, Annotator
-from deep_sort.deep_sort import DeepSort
+#from deep_sort.deep_sort import DeepSort
+from real_sort.deep_sort import DeepSort
 import geopy.distance
 import glob
 
@@ -18,6 +19,8 @@ from fastmcd.MCDWrapper import MCDWrapper
 from counter import Box
 from utils.dronemap import *
 from copy import deepcopy
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="torch.nn.functional")
 
 class Video:
   def __init__(self, video_path, start_from=None, video_out=False):
@@ -72,8 +75,7 @@ def run(model, opt):
   video_file,logs_file,mapp_file = process_input_folder(opt.path)
   if mapp_file is not None:
     # load deepsort
-    deepsort = DeepSort('osnet_ibn_x1_0_MSMT17', inf.device, strongsort=True)
-
+    deepsort = DeepSort('osnet_x0_25', inf.device, 0.2, 0.7, 30, 3, 100)
 
   # heatmap
   #heatmap = HeatMap('image_registration/map_rotunda.png')
@@ -115,11 +117,12 @@ def run(model, opt):
   while pbar:
     ret, frame = video.cap.read()
     frame_id += 1
-    annotator.add_image(frame)
 
     if not ret:
       print("Can't receive frame (stream end?). Exiting ...")
       break
+
+    annotator.add_image(frame)
 
     if opt.n_frames == frame_id:
       break
@@ -149,9 +152,9 @@ def run(model, opt):
     # pass detections to deepsort
     if not opt.just_detector:
       outputs = deepsort.update(
-        detections.current[:, 2:6], # xywhs
-        detections.current[:, 6], # confs
-        detections.current[:, 7], # clss
+        torch.tensor(detections.current[:, 2:6]), # xywhs
+        torch.tensor(detections.current[:, 6]), # confs
+        torch.tensor(detections.current[:, 7]), # clss
         frame.copy()
       )
     
@@ -229,6 +232,9 @@ def run(model, opt):
   if opt.video_out:
     # save video
     video.writer.release()
+
+  print(speeds[3])
+  np.save('./speeds', speeds[3])
   
   video.cap.release()
   cv2.destroyAllWindows()

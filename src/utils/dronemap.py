@@ -245,16 +245,19 @@ class MapDrone:
     :param idcenters: list frame object centers
     """
     mapp = self.map.copy()
+    # get data from logs and store last data
     lat,lon,heading,height = self.get_data(k)
 
     # convert drone current position to map coordinates
     x,y = self.geo.coords_to_pixels(lat,lon)
+
     # draw xy on the map
     mapp = cv2.circle(mapp,(x,y),radius=3,color=(0,0,255),thickness=10)
 
     # update drone footprint
     #height = 60
-    height = 125
+    #height = 125
+    height = 94
     self._update_footprint_values(height)
 
     # convert footprint to pixels
@@ -274,22 +277,26 @@ class MapDrone:
     incx, incy = x-ftp_X_px, y-ftp_Y_px
 
     # Match footprint with frame (SuperGlue)
-    """
     H, warped_img  = self.matcher.get_warped_image(frame, footprint, detections)
-    warped_img = warped_img.astype(np.uint8)
-    cv2.imshow('warped_img', warped_img)
-    """
+
+    if H is not None and warped_img is not None:
+      warped_img = warped_img.astype(np.uint8)
+      #cv2.imshow('warped_img', warped_img)
+    else:
+      # resize mapp
+      mapp = cv2.resize(mapp,(MapDrone.RESIZED_MAP_WIDTH,MapDrone.FRAME_HEIGHT))
+      return mapp,footprint,{}
+
     """
     H = np.array([[1.22435777e+00, 2.30184713e-01, -2.39075325e+02],
                   [1.65445651e-01,  1.26741124e+00, -1.18632417e+02],
                   [7.14800882e-05,  3.33141918e-05,  1.00000000e+00]])
     h_scaleX, h_scaleY = (1905/1280), (1255/843)
     """
-
     scaled_pts = {}
     for k,pt in idcenters.items():
       # superglue
-      if 1 == 0:
+      if 1 == 1:
         pt = [pt[0],pt[1],1]
         res = np.dot(H,pt)
         pt = [res[0]/res[2],res[1]/res[2]]
@@ -311,7 +318,7 @@ class MapDrone:
         # convert pixel to lat and lon
         scaled_pts[k] = self.geo.pixels_to_coords(pt[0],pt[1])
 
-      if 1 == 1:
+      if 1 == 0:
         # scaling the video frame points to cropped footprint 
         pt = (pt[0]/ftp_scale_x, pt[1]/ftp_scale_y)
         # convert from cropped footprint to map coordinates

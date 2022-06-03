@@ -8,11 +8,12 @@ Relatorio:
 - Pormenores (INTRODUCOES) (acronimos, citations, captions...)
 
 Codigo:
+  - Filtrar outliers superglue
   - Filtro da estrada
   - Fazer output do video com as velocidades medias
   - Fazer heatmap
 
 Geral:
+  - Fazer tabelas de videos
   - Treinar com os dados de treino + test-dev, shuffle neles todos
 
-https://github.com/rlabbe/Kalman-and-Bayesian-Filters-in-Python/blob/master/13-Smoothing.ipynb
