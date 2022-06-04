@@ -107,11 +107,10 @@ def run(model, opt):
     teste = MapDrone(logs_file,geo,video.cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
   isFirst = True
-  frame_id = 0 
+  frame_id = -1
   idcenters = None # id:center
   map_img, img_crop = None, None
   pbar=tqdm(video.cap.isOpened(), total=video.video_frames)
-  k = 0
   speeds = {}
   last_scaled_pts = None
   while pbar:
@@ -127,21 +126,12 @@ def run(model, opt):
     if opt.n_frames == frame_id:
       break
 
-    # Background Subtraction
-    """
-    gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
-    mask = np.zeros(gray.shape, np.uint8)
-    if isFirst:
-      mcd.init(gray)
-      isFirst = False
-    else:
-      mask = mcd.run(gray)
-    contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    """
-
     # inference
     pred = inf.get_pred(frame)
-    if pred is None: continue
+    if pred is None:
+      # update pbar
+      pbar.update(1)
+      continue
 
     # Predictions in MOT format
     detections.update_current(
@@ -177,7 +167,7 @@ def run(model, opt):
     # MAP
     if frame_id % 3 == 0 and mapp_file is not None:
       map_img, img_crop, scaled_points = teste.get_next_data(
-          k,filter_current_ids(detections.idcenters,detections.current[:, 1]),
+          frame_id//3,filter_current_ids(detections.idcenters,detections.current[:, 1]),
           frame, detections.current[:, 2:6],
       )
       # resize img_crop to 1280x720
@@ -194,7 +184,6 @@ def run(model, opt):
       
       # update last_scaled_pts
       last_scaled_pts = deepcopy(scaled_points)
-      k+=1
 
     # draw heatpoints in the frame
     #frame = heatmap.draw_heatpoints(frame)
