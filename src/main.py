@@ -165,7 +165,7 @@ def run(model, opt):
       detections.current[:, 2:6] = xywh2xyxy(detections.current[:, 2:6])
 
     # MAP
-    if frame_id % 3 == 0 and mapp_file is not None:
+    if frame_id % 3 == 0 and mapp_file is not None and (frame_id//3)<teste.max_data:
       map_img, img_crop, scaled_points = teste.get_next_data(
           frame_id//3,filter_current_ids(detections.idcenters,detections.current[:, 1]),
           frame, detections.current[:, 2:6],

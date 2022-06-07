@@ -109,6 +109,7 @@ class MapDrone:
     self.longitude_list = data["longitude"][:max_data].tolist()
     self.compass_heading_list = data[" compass_heading(degrees)"][:max_data].tolist()
     self.height_list = data["height_above_takeoff(feet)"][:max_data].tolist()
+    self.max_data = len(self.latitude_list)
     # feet to meters
     self.height_list = [h*0.3048 for h in self.height_list]
     # ground sample distance
@@ -277,6 +278,7 @@ class MapDrone:
     incx, incy = x-ftp_X_px, y-ftp_Y_px
 
     # Match footprint with frame (SuperGlue)
+    """
     H, warped_img  = self.matcher.get_warped_image(frame, footprint, detections)
 
     if H is not None and warped_img is not None:
@@ -286,6 +288,7 @@ class MapDrone:
       # resize mapp
       mapp = cv2.resize(mapp,(MapDrone.RESIZED_MAP_WIDTH,MapDrone.FRAME_HEIGHT))
       return mapp,footprint,{}
+    """
 
     """
     H = np.array([[1.22435777e+00, 2.30184713e-01, -2.39075325e+02],
@@ -296,7 +299,7 @@ class MapDrone:
     scaled_pts = {}
     for k,pt in idcenters.items():
       # superglue
-      if 1 == 1:
+      if 1 == 0:
         pt = [pt[0],pt[1],1]
         res = np.dot(H,pt)
         pt = [res[0]/res[2],res[1]/res[2]]
@@ -318,7 +321,7 @@ class MapDrone:
         # convert pixel to lat and lon
         scaled_pts[k] = self.geo.pixels_to_coords(pt[0],pt[1])
 
-      if 1 == 0:
+      if 1 == 1:
         # scaling the video frame points to cropped footprint 
         pt = (pt[0]/ftp_scale_x, pt[1]/ftp_scale_y)
         # convert from cropped footprint to map coordinates
