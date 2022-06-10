@@ -1,7 +1,7 @@
 import torch
 import cv2
-from datasets import MyDatasetMOT, MyDatasetDET
-from inference import Inference 
+from utils.datasets import MyDatasetMOT, MyDatasetDET
+from utils.inference import Inference 
 from utils.evaluator import Evaluator
 from utils.general import DetectionsMatrix, non_max_suppression, Annotator
 from utils.conversions import scale_coords, xywh2xyxy, xyxy2xywh

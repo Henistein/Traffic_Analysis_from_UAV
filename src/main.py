@@ -6,10 +6,10 @@ from opts import OPTS
 from utils.conversions import xyxy2xywh, xywh2xyxy
 from utils.general import DetectionsMatrix, Annotator
 from deep_sort.deep_sort import DeepSort
-import geopy.distance
+from utils.speed_handler import SpeedHandler
 import glob
 
-from inference import Inference 
+from utils.inference import Inference 
 from counter import Box
 from utils.dronemap import *
 from copy import deepcopy
@@ -71,13 +71,15 @@ def run(model, opt):
     # load deepsort
     deepsort = DeepSort('osnet_x0_25', inf.device, 0.2, 0.7, 30, 3, 100)
 
-  # map
+  # annotator
   annotator = Annotator()
+  # detections
   detections = DetectionsMatrix(
     classes_to_eval=model.names,
     classnames=model.names
   )
-
+  # speed handler
+  speed_handler = SpeedHandler()
   # video
   video = Video(video_path=video_file, start_from=opt.start_from, video_out=opt.video_out)
   
@@ -89,7 +91,6 @@ def run(model, opt):
   frame_id = -1
   map_img, img_crop = None, None
   pbar=tqdm(video.cap.isOpened(), total=video.video_frames)
-  speeds = {}
   last_scaled_pts = None
   while pbar:
     ret, frame = video.cap.read()
@@ -151,12 +152,15 @@ def run(model, opt):
       # calculate speed
       if last_scaled_pts is not None:
         # calulate euclidean distance
+        speed_handler.update_speeds(scaled_points, last_scaled_pts)
+        """
         for id_ in set(scaled_points).intersection(set(last_scaled_pts)):
           dist = geopy.distance.geodesic(last_scaled_pts[id_], scaled_points[id_]).meters
           if id_ in speeds.keys():
             speeds[id_].append((dist/0.1)*3.6)
           else:
             speeds[id_] = [(dist/0.1)*3.6]
+        """
       
       # update last_scaled_pts
       last_scaled_pts = deepcopy(scaled_points)
@@ -165,9 +169,9 @@ def run(model, opt):
     pbar.update(1)
 
     # draw detections
-    frame = inf.attach_detections(annotator, detections.current, classnames, label="I" if not opt.just_detector else "CP", speeds=speeds)
+    frame = inf.attach_detections(annotator, detections.current, classnames, label="I" if not opt.just_detector else "CP", speeds=speed_handler.speeds)
     if opt.video_out:
-      video.writer.write(annotator.image)
+      video.writer.write(frame)
     
     # draw 
     if not opt.no_show:
@@ -176,7 +180,7 @@ def run(model, opt):
       if map_img is not None: cv2.imshow('map_img', map_img)
       if img_crop is not None: cv2.imshow('crop_img', img_crop)
 
-      cv2.imshow('frame', annotator.image)
+      cv2.imshow('frame', frame)
       if cv2.waitKey(1) == ord('q'):
         break
     
@@ -194,7 +198,6 @@ def run(model, opt):
   
   # show heatmap
   drone_map.heatmap.draw_heatmap()
-
   
   video.cap.release()
   cv2.destroyAllWindows()

@@ -3,8 +3,7 @@ import time
 import torchvision
 import numpy as np
 import cv2
-from copy import deepcopy
-from utils.conversions import xywh2xyxy, scale_coords
+from utils.conversions import xywh2xyxy
 
 
 class DetectionsMatrix:

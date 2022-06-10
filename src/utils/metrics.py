@@ -1,9 +1,6 @@
-from charset_normalizer import detect
 import torch
 import torch.nn
 import numpy as np
-import matplotlib.pyplot as plt
-import warnings
 from pathlib import Path
 import math
 
