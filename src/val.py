@@ -6,8 +6,7 @@ from utils.evaluator import Evaluator
 from utils.general import DetectionsMatrix, non_max_suppression, Annotator
 from utils.conversions import scale_coords, xywh2xyxy, xyxy2xywh
 from utils.metrics import process_batch
-#from deep_sort.deep_sort import DeepSort
-from real_sort.deep_sort import DeepSort
+from deep_sort.deep_sort import DeepSort
 from opts import OPTS
 from tqdm import tqdm
 import numpy as np
@@ -24,7 +23,6 @@ def run(dataset, model, opt, device):
   device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
   # load deepsort
-  #deepsort = DeepSort('osnet_ibn_x1_0_MSMT17', device, strongsort=opt.strongsort)
   deepsort = DeepSort('osnet_x0_25', device, 0.2, 0.7, 30, 1, 100)
 
   print('Tracker: '+'StrongSort' if opt.strongsort else 'DeepSort')

@@ -9,11 +9,7 @@ from deep_sort.deep_sort import DeepSort
 import geopy.distance
 import glob
 
-from scipy.spatial.distance import euclidean 
-import matplotlib.pyplot as plt
 from inference import Inference 
-from utils.metrics import box_iou
-from fastmcd.MCDWrapper import MCDWrapper
 from counter import Box
 from utils.dronemap import *
 from copy import deepcopy
@@ -75,38 +71,22 @@ def run(model, opt):
     # load deepsort
     deepsort = DeepSort('osnet_x0_25', inf.device, 0.2, 0.7, 30, 3, 100)
 
-  # heatmap
-  #heatmap = HeatMap('image_registration/map_rotunda.png')
-  #mcd = MCDWrapper()
-  
   # map
-  """
-  geo = GeoInterpolation(
-      lat_north=40.273668,
-      long_west=-7.506679,
-      lat_south=40.268085,
-      long_east=-7.493513,
-      lat_center=40.271018,
-      long_center=-7.500335,
-      image=cv2.imread('images/MAPA.jpg')
-  )
-  """
-
   annotator = Annotator()
   detections = DetectionsMatrix(
     classes_to_eval=model.names,
     classnames=model.names
   )
+
+  # video
   video = Video(video_path=video_file, start_from=opt.start_from, video_out=opt.video_out)
   
   if mapp_file is not None:
     # drone map
     geo = GeoRef(mapp_file)
-    teste = MapDrone(logs_file,geo,video.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    drone_map = MapDrone(logs_file,geo,video.cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-  isFirst = True
   frame_id = -1
-  idcenters = None # id:center
   map_img, img_crop = None, None
   pbar=tqdm(video.cap.isOpened(), total=video.video_frames)
   speeds = {}
@@ -163,14 +143,12 @@ def run(model, opt):
       detections.current[:, 2:6] = xywh2xyxy(detections.current[:, 2:6])
 
     # MAP
-    if frame_id % 3 == 0 and mapp_file is not None and (frame_id//3)<teste.max_data:
-      map_img, img_crop, scaled_points = teste.get_next_data(
+    if frame_id % 3 == 0 and mapp_file is not None and (frame_id//3)<drone_map.max_data:
+      map_img, img_crop, scaled_points = drone_map.get_next_data(
           frame_id//3,filter_current_ids(detections.idcenters,detections.current[:, 1]),
           frame, detections.current[:, 2:6],
       )
-      # resize img_crop to 1280x720
-      #img_crop = cv2.resize(img_crop, (1280, 720))
-      # speed
+      # calculate speed
       if last_scaled_pts is not None:
         # calulate euclidean distance
         for id_ in set(scaled_points).intersection(set(last_scaled_pts)):
@@ -183,23 +161,8 @@ def run(model, opt):
       # update last_scaled_pts
       last_scaled_pts = deepcopy(scaled_points)
 
-    """
-    aux_pts = []
-    for k in detections.idcenters:
-      for i in detections.idcenters[k]['all']:
-        for j in range(detections.idcenters[k]['all'][i]):
-          aux_pts.append(i)
-    print(aux_pts)
-    """
-
-    # draw heatpoints in the frame
-    #frame = heatmap.draw_heatpoints(frame)
-
     # update pbar
     pbar.update(1)
-
-    # Draw counter
-    #frame = cv2.rectangle(frame,(229,307),(231,411),(0,255,0),2)
 
     # draw detections
     frame = inf.attach_detections(annotator, detections.current, classnames, label="I" if not opt.just_detector else "CP", speeds=speeds)
@@ -230,7 +193,7 @@ def run(model, opt):
     video.writer.release()
   
   # show heatmap
-  teste.heatmap.draw_heatmap()
+  drone_map.heatmap.draw_heatmap()
 
   
   video.cap.release()

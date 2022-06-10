@@ -38,7 +38,6 @@ class DetectionsMatrix:
 
     # filter classes
     self.exclude_classes()
-
     #self.curr_frame_id = self.current[:, 0]
     #self.curr_ids = self.current[:, 1]
     #self.curr_bboxes = self.current[:, 2:6]

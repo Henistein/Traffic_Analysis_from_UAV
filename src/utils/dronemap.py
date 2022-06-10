@@ -5,7 +5,6 @@ import pandas as pd
 import geopy
 
 from osgeo import osr, ogr, gdal
-from superglue.matcher import Matcher
 from .heatmap import HeatMap
 
 class GeoRef:
@@ -48,6 +47,17 @@ class GeoRef:
     return x, y
 
 class GeoInterpolation:
+  """
+  geo = GeoInterpolation(
+      lat_north=40.273668,
+      long_west=-7.506679,
+      lat_south=40.268085,
+      long_east=-7.493513,
+      lat_center=40.271018,
+      long_center=-7.500335,
+      image=cv2.imread('images/MAPA.jpg')
+  )
+  """
   def __init__(self, lat_north, long_west, lat_south, long_east, lat_center, long_center, image):
     # image
     self.image = image
