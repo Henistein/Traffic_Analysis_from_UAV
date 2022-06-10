@@ -6,6 +6,7 @@ import geopy
 
 from osgeo import osr, ogr, gdal
 from superglue.matcher import Matcher
+from .heatmap import HeatMap
 
 class GeoRef:
   # https://stackoverflow.com/questions/58623254/find-pixel-coordinates-from-lat-long-point-in-geotiff-using-python-and-gdal
@@ -116,8 +117,8 @@ class MapDrone:
     self.gsd = None
     self.FOOTPRINT_WIDTH = None
     self.FOOTPRINT_HEIGHT = None
-    # matcher (SuperGlue)
-    self.matcher = Matcher()
+    # heatmap
+    self.heatmap = HeatMap(self.map)
   
   def _update_footprint_values(self, height):
     """
@@ -257,8 +258,8 @@ class MapDrone:
 
     # update drone footprint
     #height = 60
-    #height = 125
-    height = 94
+    height = 125
+    #height = 94
     self._update_footprint_values(height)
 
     # convert footprint to pixels
@@ -277,61 +278,20 @@ class MapDrone:
     # auxiliar variables to convert from footprint to map coordinates
     incx, incy = x-ftp_X_px, y-ftp_Y_px
 
-    # Match footprint with frame (SuperGlue)
-    """
-    H, warped_img  = self.matcher.get_warped_image(frame, footprint, detections)
-
-    if H is not None and warped_img is not None:
-      warped_img = warped_img.astype(np.uint8)
-      #cv2.imshow('warped_img', warped_img)
-    else:
-      # resize mapp
-      mapp = cv2.resize(mapp,(MapDrone.RESIZED_MAP_WIDTH,MapDrone.FRAME_HEIGHT))
-      return mapp,footprint,{}
-    """
-
-    """
-    H = np.array([[1.22435777e+00, 2.30184713e-01, -2.39075325e+02],
-                  [1.65445651e-01,  1.26741124e+00, -1.18632417e+02],
-                  [7.14800882e-05,  3.33141918e-05,  1.00000000e+00]])
-    h_scaleX, h_scaleY = (1905/1280), (1255/843)
-    """
     scaled_pts = {}
     for k,pt in idcenters.items():
-      # superglue
-      if 1 == 0:
-        pt = [pt[0],pt[1],1]
-        res = np.dot(H,pt)
-        pt = [res[0]/res[2],res[1]/res[2]]
-        pt = (pt[0]+incx, pt[1]+incy)
-        pt = self.rotate_camera((x,y), heading, [pt])[0]
-        mapp = cv2.circle(mapp,(int(pt[0]),int(pt[1])),radius=5,color=(0,255,0),thickness=5)
-        # convert pixel to lat and lon
-        scaled_pts[k] = self.geo.pixels_to_coords(pt[0],pt[1])
-
-      # multiply point by homography matrix
-      if 1 == 0:
-        pt = [pt[0],pt[1],1]
-        res = np.dot(H,pt)
-        pt = [res[0]/res[2],res[1]/res[2]]
-        pt = (pt[0]*h_scaleX, pt[1]*h_scaleY)
-        pt = (pt[0]+incx, pt[1]+incy)
-        pt = self.rotate_camera((x,y), heading, [pt])[0]
-        mapp = cv2.circle(mapp,(int(pt[0]),int(pt[1])),radius=5,color=(0,255,0),thickness=5)
-        # convert pixel to lat and lon
-        scaled_pts[k] = self.geo.pixels_to_coords(pt[0],pt[1])
-
-      if 1 == 1:
-        # scaling the video frame points to cropped footprint 
-        pt = (pt[0]/ftp_scale_x, pt[1]/ftp_scale_y)
-        # convert from cropped footprint to map coordinates
-        pt = (pt[0]+incx, pt[1]+incy)
-        # rotate points to match drone heading
-        pt = self.rotate_camera((x,y), heading, [pt])[0]
-        # draw point on map
-        mapp = cv2.circle(mapp,(int(pt[0]),int(pt[1])),radius=3,color=(0,255,0),thickness=10)
-        # convert points to lat and lon
-        scaled_pts[k] = self.geo.pixels_to_coords(pt[0],pt[1])
+      # scaling the video frame points to cropped footprint 
+      pt = (pt[0]/ftp_scale_x, pt[1]/ftp_scale_y)
+      # convert from cropped footprint to map coordinates
+      pt = (pt[0]+incx, pt[1]+incy)
+      # rotate points to match drone heading
+      pt = self.rotate_camera((x,y), heading, [pt])[0]
+      # update heatmap points
+      self.heatmap.update_points(pt)
+      # draw point on map
+      mapp = cv2.circle(mapp,(int(pt[0]),int(pt[1])),radius=3,color=(0,255,0),thickness=10)
+      # convert points to lat and lon
+      scaled_pts[k] = self.geo.pixels_to_coords(pt[0],pt[1])
 
     # resize mapp
     mapp = cv2.resize(mapp,(MapDrone.RESIZED_MAP_WIDTH,MapDrone.FRAME_HEIGHT))

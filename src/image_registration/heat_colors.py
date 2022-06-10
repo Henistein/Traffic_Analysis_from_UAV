@@ -47,8 +47,7 @@ zi = k(np.vstack([xi.flatten(), yi.flatten()]))
 
 # alpha=0.5 will make the plots semitransparent
 plt.pcolormesh(xi, yi, zi.reshape(xi.shape), alpha=0.5, shading='auto')
-plt.xlim(x.min(), x.max())
-plt.ylim(y.max(), y.min())
+#plt.xlim(x.min(), x.max())
+#plt.ylim(y.max(), y.min())
 plt.imshow(img)
 plt.show()
-

@@ -5,15 +5,13 @@ from tqdm import tqdm
 from opts import OPTS
 from utils.conversions import xyxy2xywh, xywh2xyxy
 from utils.general import DetectionsMatrix, Annotator
-#from deep_sort.deep_sort import DeepSort
-from real_sort.deep_sort import DeepSort
+from deep_sort.deep_sort import DeepSort
 import geopy.distance
 import glob
 
 from scipy.spatial.distance import euclidean 
 import matplotlib.pyplot as plt
 from inference import Inference 
-from heatmap import HeatMap
 from utils.metrics import box_iou
 from fastmcd.MCDWrapper import MCDWrapper
 from counter import Box
@@ -185,6 +183,15 @@ def run(model, opt):
       # update last_scaled_pts
       last_scaled_pts = deepcopy(scaled_points)
 
+    """
+    aux_pts = []
+    for k in detections.idcenters:
+      for i in detections.idcenters[k]['all']:
+        for j in range(detections.idcenters[k]['all'][i]):
+          aux_pts.append(i)
+    print(aux_pts)
+    """
+
     # draw heatpoints in the frame
     #frame = heatmap.draw_heatpoints(frame)
 
@@ -221,9 +228,10 @@ def run(model, opt):
   if opt.video_out:
     # save video
     video.writer.release()
+  
+  # show heatmap
+  teste.heatmap.draw_heatmap()
 
-  print(speeds[3])
-  np.save('./speeds', speeds[3])
   
   video.cap.release()
   cv2.destroyAllWindows()
