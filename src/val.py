@@ -9,15 +9,13 @@ from utils.metrics import process_batch
 from deep_sort.deep_sort import DeepSort
 from opts import OPTS
 from tqdm import tqdm
-import numpy as np
 
-def run(dataset, model, opt, device):
+def run(dataset, model, opt):
   # validation
-  model.eval()
-  classnames = model.names
   stats = []
   annotator = Annotator()
   labels = DetectionsMatrix(model.names, model.names) # labels in mot format
+  is_yolo = True if opt.model.startswith('yolo') else False
   detections = DetectionsMatrix(model.names, model.names) # detections in mot format
   iou = torch.linspace(0.5, 0.95, 10)
   device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -35,10 +33,14 @@ def run(dataset, model, opt, device):
     nb, _, height, width = img.shape
 
     # Inference
-    out = model(img)[0]
+    if is_yolo:
+      out = model(img)[0]
+      # NMS 
+      pred = non_max_suppression(out, conf_thres=opt.conf_thres, iou_thres=opt.iou_thres)[0]
+    else:
+      img = cv2.imread(paths)
+      pred = model.run_on_opencv_image(img)
 
-    # NMS 
-    pred = non_max_suppression(out, conf_thres=opt.conf_thres, iou_thres=opt.iou_thres)[0]
     if pred is None or len(pred) == 0:
       if opt.detector:
         stats.append((torch.zeros(0, iou.numel(), dtype=torch.bool), torch.Tensor(), torch.Tensor(), targets[:, -1].cpu().numpy()))
@@ -60,14 +62,23 @@ def run(dataset, model, opt, device):
         clss=targets[:, 4]
       )
 
-    # scale detections to native coordinates
-    pred[:, 0:4] = scale_coords(img[0].shape[1:], pred[:, 0:4], shapes[0])
+    if is_yolo:
+      pred_bboxes = pred[:, :4]
+      # scale detections to native coordinates
+      pred_bboxes = scale_coords(img[0].shape[1:], pred_bboxes, shapes[0])
+      pred_confs = pred[:, 4]
+      pred_clss = pred[:, 5]
+    else:
+      pred_bboxes = pred.bbox
+      pred_confs = pred.get_field('scores')
+      pred_clss = pred.get_field('labels')-2
+
 
     # Predictions in MOT format
     detections.update_current(
-      bboxes=xyxy2xywh(pred[:, 0:4]),
-      confs=pred[:, 4], # confs
-      clss=pred[:, 5] # clss
+      bboxes=xyxy2xywh(pred_bboxes),
+      confs=pred_confs, # confs
+      clss=pred_clss # clss
     )
 
     # pass detections to deepsort
@@ -90,15 +101,15 @@ def run(dataset, model, opt, device):
         Inference.subjective(
           stats=[(
             correct.cpu(),
-            pred[:, 4].cpu(),
-            pred[:, 5].cpu(),
+            pred_confs.cpu(),
+            pred_clss.cpu(),
             labels.current[:, -1]
           )],
           detections=detections.current,
           labels=labels.current,
           img=im,
           annotator=annotator,
-          classnames=classnames
+          classnames=model.names,
         )
       # append stats to eval detector
       stats.append((correct.cpu(), pred[:, 4].cpu(), pred[:, 5].cpu(), labels.current[:, -1]))  # (correct, conf, pcls, tcls)
@@ -119,7 +130,7 @@ def run(dataset, model, opt, device):
             labels=labels.current,
             img=im,
             annotator=annotator,
-            classnames=classnames
+            classnames=model.names
           )
 
     # update mot_matrix
@@ -172,8 +183,24 @@ if __name__ == '__main__':
 
   # model
   weights = 'weights/' + opt.model
-  device = torch.device('cuda')
-  model = torch.load(weights)['model'].float()
-  model.to(device)
 
-  run(dataset, model, opt, device)
+  print(f"Running {opt.model}")
+  if opt.model.startswith('yolo'):
+    # load yolo model
+    model = torch.load(weights)['model'].float()
+    model.to(torch.device('cuda')).eval()
+  else:
+    from maskrcnn_benchmark.config import cfg
+    from utils.predictor import COCODemo
+    # load fasterrcnn model
+    config_file = "configs/fasterrcnn.yaml"
+    cfg.merge_from_file(config_file)
+    cfg.merge_from_list(["MODEL.WEIGHT", weights])
+    model = COCODemo(
+      cfg,
+      min_image_size=800,
+      confidence_threshold=0.5
+    )
+    model.names = ['pedestrian', 'people', 'bicycle', 'car', 'van', 'truck', 'tricycle', 'awning-tricycle', 'bus', 'motor']
+
+  run(dataset, model, opt)

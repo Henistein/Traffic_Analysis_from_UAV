@@ -1,3 +1,4 @@
+from distutils.command.config import config
 import torch
 import numpy as np
 import cv2 
@@ -62,14 +63,17 @@ def process_input_folder(path):
   return video_file,logs_file,mapp_file
 
 def run(model, opt):
-  inf = Inference(model=model, device='cuda', imsize=opt.img_size, iou_thres=opt.iou_thres, conf_thres=opt.conf_thres)
-  classnames = model.names
+  # check if yolo or fasterrcnn
+  is_yolo = True if opt.model.startswith('yolo') else False
+  device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+  inf = Inference(model=model, imsize=opt.img_size, iou_thres=opt.iou_thres, conf_thres=opt.conf_thres)
 
   # process input
   video_file,logs_file,mapp_file = process_input_folder(opt.path)
   if mapp_file is not None:
     # load deepsort
-    deepsort = DeepSort('osnet_x0_25', inf.device, 0.2, 0.7, 30, 3, 100)
+    deepsort = DeepSort('osnet_x0_25', device, 0.2, 0.7, 30, 3, 100)
 
   # annotator
   annotator = Annotator()
@@ -106,18 +110,30 @@ def run(model, opt):
       break
 
     # inference
-    pred = inf.get_pred(frame)
+    if is_yolo:
+      pred = inf.get_pred(frame)
+    else:
+      pred = model.run_on_opencv_image(frame)
+
     if pred is None:
       # update pbar
       pbar.update(1)
       continue
 
     # Predictions in MOT format
-    detections.update_current(
-      bboxes=xyxy2xywh(pred[:, 0:4]),
-      confs=pred[:, 4], # confs
-      clss=pred[:, 5] # clss
-    )
+    if is_yolo:
+      detections.update_current(
+        bboxes=xyxy2xywh(pred[:, 0:4]),
+        confs=pred[:, 4], # confs
+        clss=pred[:, 5] # clss
+      )
+    else:
+      detections.update_current(
+        bboxes=xyxy2xywh(pred.bbox),
+        confs=pred.get_field('scores'),
+        clss=pred.get_field('labels')-2
+      )
+
     # pass detections to deepsort
     if not opt.just_detector:
       outputs = deepsort.update(
@@ -169,7 +185,7 @@ def run(model, opt):
     pbar.update(1)
 
     # draw detections
-    frame = inf.attach_detections(annotator, detections.current, classnames, label="I" if not opt.just_detector else "CP", speeds=speed_handler.speeds)
+    frame = inf.attach_detections(annotator, detections.current, model.names, label="I" if not opt.just_detector else "CP", speeds=speed_handler.speeds)
     if opt.video_out:
       video.writer.write(frame)
     
@@ -205,9 +221,25 @@ def run(model, opt):
 if __name__ == '__main__':
   opt = OPTS.main_args()
 
-  # run deepsort with yolo
   weights = 'weights/'+opt.model
-  model = torch.load(weights)['model'].float()
-  model.to(torch.device('cuda'))
+
+  print(f"Running {opt.model}")
+  if opt.model.startswith('yolo'):
+    # load yolo model
+    model = torch.load(weights)['model'].float()
+    model.to(torch.device('cuda')).eval()
+  else:
+    from maskrcnn_benchmark.config import cfg
+    from utils.predictor import COCODemo
+    # load fasterrcnn model
+    config_file = "configs/fasterrcnn.yaml"
+    cfg.merge_from_file(config_file)
+    cfg.merge_from_list(["MODEL.WEIGHT", weights])
+    model = COCODemo(
+      cfg,
+      min_image_size=800,
+      confidence_threshold=0.5
+    )
+    model.names = ['pedestrian', 'people', 'bicycle', 'car', 'van', 'truck', 'tricycle', 'awning-tricycle', 'bus', 'motor']
 
   run(model, opt)
