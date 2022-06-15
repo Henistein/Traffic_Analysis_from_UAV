@@ -6,6 +6,11 @@ Relatorio:
   - Arranjar plots das velocidades
   - Consertar inconsistencias no texto (fazer ctrl F em state of the art -> state-of-the-art)
   - Arranjar outra imagem do footprint
+  - Arranjar imagem para o kde do heatmap
+  - Capitulo acrescentar Other Estatisticas
+  - Citar bibliotexas do python
+  - Dar label a todas as figuras e tabelas
+  - Fazer uma revisao linguistica tendo em conta este site: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3935133/
 
   - Ideias para por no relatorio
     - Filtro do carro nos metodos
@@ -16,15 +21,13 @@ Relatorio:
     - Filtro médio no capitulo das experiencias e resultados (optimizações).
     - Falar sobre o google earth e qgis nos materiais
     - Falar sobre o YOLOv5, TPH-YOLOv5 e Faster R-CNN no treino nos experimentos
-    - Traffic statistis: Heatmap, Counter, How many different cars was detected e a sua distribuicao por classes, velocidade media da via
+    - No capitulo dos experimentos, ter um capitulo para cada modelo (YOLOs, Faster RCNN, e DeepSort) neste capitulo mostro os resultados com o dataset do visdrone.
+    - Apresentar a avaliação subjetiva para além da objetiva.
 
 Codigo:
   - Filtro da estrada
   - Output de estatisticas
   - Deixar user introduzir as linhas
-  - Caixa para medir a velocidade media
 
 Geral:
   - Fazer tabelas de videos
-  - Treinar com os dados de treino + test-dev, shuffle neles todos
-
