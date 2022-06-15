@@ -1,17 +1,28 @@
 Relatorio:
-- Eliminar plagio < 30 ?
-- DeepSort e StrongSort
-- Metrics, mAP, MOTA, HOTA
-- Kalman Filter
-- SuperGlue
-- Fazer uma conclusao comparativa final sobre os detetores (YOLOvx, SSD, Faster R-CNN), usar a boa_informacao.pdf
-- Pormenores (INTRODUCOES) (acronimos, citations, captions...)
+  - Acronimos
+  - Arranjar formula
+  - Arranjar tikz
+  - Arranjar tabela
+  - Arranjar plots das velocidades
+  - Consertar inconsistencias no texto (fazer ctrl F em state of the art -> state-of-the-art)
+  - Arranjar outra imagem do footprint
+
+  - Ideias para por no relatorio
+    - Filtro do carro nos metodos
+    - Explicar que o speed estimation depende bastante to tracking
+    - Mostrar todas as situações possíveis de determinar a velocidade (carro parado e drone em movimento, dro...)
+    - Mostrar problema do calculo da altura do drone.
+    - Falar sobre o problema das bounding boxes mudarem ligeiramente de posicao de uma frame para a outra, o que implica na estimativa da velocidade.
+    - Filtro médio no capitulo das experiencias e resultados (optimizações).
+    - Falar sobre o google earth e qgis nos materiais
+    - Falar sobre o YOLOv5, TPH-YOLOv5 e Faster R-CNN no treino nos experimentos
+    - Traffic statistis: Heatmap, Counter, How many different cars was detected e a sua distribuicao por classes, velocidade media da via
 
 Codigo:
-  - Filtrar outliers superglue
   - Filtro da estrada
-  - Fazer output do video com as velocidades medias
-  - Fazer heatmap
+  - Output de estatisticas
+  - Deixar user introduzir as linhas
+  - Caixa para medir a velocidade media
 
 Geral:
   - Fazer tabelas de videos

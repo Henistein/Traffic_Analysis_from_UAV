@@ -248,7 +248,7 @@ class MapDrone:
     return self.latitude_list[k], self.longitude_list[k], \
            self.compass_heading_list[k], self.height_list[k]
 
-  def get_next_data(self, k, idcenters, frame, detections):
+  def get_next_data(self, k, idcenters):
     """
     Process the data from the drone
     Extract the drone footprint from the map
@@ -288,7 +288,7 @@ class MapDrone:
     # auxiliar variables to convert from footprint to map coordinates
     incx, incy = x-ftp_X_px, y-ftp_Y_px
 
-    scaled_pts = {}
+    scaled_pts = {"geo":{}, "px":{}}
     for k,pt in idcenters.items():
       # scaling the video frame points to cropped footprint 
       pt = (pt[0]/ftp_scale_x, pt[1]/ftp_scale_y)
@@ -298,10 +298,12 @@ class MapDrone:
       pt = self.rotate_camera((x,y), heading, [pt])[0]
       # update heatmap points
       self.heatmap.update_points(pt)
+      # save point in pixel format
+      scaled_pts["px"][k] = (int(pt[0]), int(pt[1]))
       # draw point on map
       mapp = cv2.circle(mapp,(int(pt[0]),int(pt[1])),radius=3,color=(0,255,0),thickness=10)
       # convert points to lat and lon
-      scaled_pts[k] = self.geo.pixels_to_coords(pt[0],pt[1])
+      scaled_pts["geo"][k] = self.geo.pixels_to_coords(pt[0],pt[1])
 
     # resize mapp
     mapp = cv2.resize(mapp,(MapDrone.RESIZED_MAP_WIDTH,MapDrone.FRAME_HEIGHT))

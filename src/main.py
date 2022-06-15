@@ -8,10 +8,10 @@ from utils.conversions import xyxy2xywh, xywh2xyxy
 from utils.general import DetectionsMatrix, Annotator
 from deep_sort.deep_sort import DeepSort
 from utils.speed_handler import SpeedHandler
+from utils.counter import Counter 
 import glob
 
 from utils.inference import Inference 
-from counter import Box
 from utils.dronemap import *
 from copy import deepcopy
 import warnings
@@ -91,6 +91,9 @@ def run(model, opt):
     # drone map
     geo = GeoRef(mapp_file)
     drone_map = MapDrone(logs_file,geo,video.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    # counter
+    counter = Counter()
+    counter.update_img(geo.image, (geo.image.shape[1]/1280, geo.image.shape[0]/720))
 
   frame_id = -1
   map_img, img_crop = None, None
@@ -159,27 +162,23 @@ def run(model, opt):
     else:
       detections.current[:, 2:6] = xywh2xyxy(detections.current[:, 2:6])
 
-    # MAP
+    # Drone MAP
     if frame_id % 3 == 0 and mapp_file is not None and (frame_id//3)<drone_map.max_data:
       map_img, img_crop, scaled_points = drone_map.get_next_data(
-          frame_id//3,filter_current_ids(detections.idcenters,detections.current[:, 1]),
-          frame, detections.current[:, 2:6],
+          frame_id//3,filter_current_ids(detections.idcenters,detections.current[:, 1])
       )
-      # calculate speed
+
       if last_scaled_pts is not None:
-        # calulate euclidean distance
-        speed_handler.update_speeds(scaled_points, last_scaled_pts)
-        """
-        for id_ in set(scaled_points).intersection(set(last_scaled_pts)):
-          dist = geopy.distance.geodesic(last_scaled_pts[id_], scaled_points[id_]).meters
-          if id_ in speeds.keys():
-            speeds[id_].append((dist/0.1)*3.6)
-          else:
-            speeds[id_] = [(dist/0.1)*3.6]
-        """
+        # calulate speed
+        speed_handler.update_speeds(scaled_points["geo"], last_scaled_pts["geo"])
+
+        # count cars
+        counter.update_img(map_img, (drone_map.geo.image.shape[1]/1280, drone_map.geo.image.shape[0]/720))
+        counter.count(scaled_points["px"])
       
       # update last_scaled_pts
       last_scaled_pts = deepcopy(scaled_points)
+
 
     # update pbar
     pbar.update(1)
@@ -193,7 +192,7 @@ def run(model, opt):
     if not opt.no_show:
       # draw centers
       if len(detections.idcenters): annotator.draw_centers(filter_current_ids(detections.idcenters, detections.current[:, 1]).values())
-      if map_img is not None: cv2.imshow('map_img', map_img)
+      if counter.img is not None: cv2.imshow('map_img', counter.img)
       if img_crop is not None: cv2.imshow('crop_img', img_crop)
 
       cv2.imshow('frame', frame)
