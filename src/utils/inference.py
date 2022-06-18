@@ -75,15 +75,15 @@ class Inference:
 
 
   @staticmethod
-  def compute_stats(stats):
+  def compute_stats(stats, names=()):
     # compute metrics
     stats = [np.concatenate(x, 0) for x in zip(*stats)]  # to numpy
     
     if len(stats) and stats[0].any():
-      tp, fp, p, r, f1, ap, ap_class = ap_per_class(*stats)
+      tp, fp, p, r, f1, ap, ap_class = ap_per_class(*stats, names=names)
       ap50, ap = ap[:, 0], ap.mean(1)  # AP@0.5, AP@0.5:0.95
       mp, mr, map50, map = p.mean(), r.mean(), ap50.mean(), ap.mean()
-      nt = np.bincount(stats[3].astype(np.int64), minlength=80)  # number of targets per class
+      nt = np.bincount(stats[3].astype(np.int64), minlength=10)  # number of targets per class
       return mp, mr, map50, map
     else:
       nt = torch.zeros(1)

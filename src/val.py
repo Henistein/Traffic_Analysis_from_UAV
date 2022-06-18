@@ -9,6 +9,8 @@ from utils.metrics import process_batch
 from deep_sort.deep_sort import DeepSort
 from opts import OPTS
 from tqdm import tqdm
+import time
+import numpy as np
 
 def run(dataset, model, opt):
   # validation
@@ -22,10 +24,9 @@ def run(dataset, model, opt):
 
   # load deepsort
   deepsort = DeepSort('osnet_x0_25', device, 0.2, 0.7, 30, 1, 100)
-
-  print('Tracker: '+'StrongSort' if opt.strongsort else 'DeepSort')
-
+  inference_times = []
   for i,(img,targets,paths,shapes) in enumerate(tqdm(dataset, total=len(dataset))):
+    #if i == 100: break
     im = cv2.imread(paths)
     img = img.to(device, non_blocking=True)
 
@@ -39,7 +40,10 @@ def run(dataset, model, opt):
       pred = non_max_suppression(out, conf_thres=opt.conf_thres, iou_thres=opt.iou_thres)[0]
     else:
       img = cv2.imread(paths)
+      # register time
+      start = time.time()
       pred = model.run_on_opencv_image(img)
+      inference_times.append(time.time() - start)
 
     if pred is None or len(pred) == 0:
       if opt.detector:
@@ -72,6 +76,11 @@ def run(dataset, model, opt):
       pred_bboxes = pred.bbox
       pred_confs = pred.get_field('scores')
       pred_clss = pred.get_field('labels')-2
+
+      indexes = pred_clss != -1
+      pred_clss = pred_clss[indexes]
+      pred_bboxes = pred_bboxes[indexes]
+      pred_confs = pred_confs[indexes]
 
 
     # Predictions in MOT format
@@ -112,7 +121,10 @@ def run(dataset, model, opt):
           classnames=model.names,
         )
       # append stats to eval detector
-      stats.append((correct.cpu(), pred[:, 4].cpu(), pred[:, 5].cpu(), labels.current[:, -1]))  # (correct, conf, pcls, tcls)
+      if is_yolo:
+        stats.append((correct.cpu(), pred[:, 4].cpu(), pred[:, 5].cpu(), labels.current[:, -1]))  # (correct, conf, pcls, tcls)
+      else:
+        stats.append((correct.cpu(), pred_confs, pred_clss, labels.current[:, -1]))
     else: 
       if len(outputs) > 0:
         min_dim = min(outputs.shape[0], detections.current.shape[0])
@@ -149,58 +161,93 @@ def run(dataset, model, opt):
       classes_to_eval=model.names
     )
     res = evaluator.run_hota()
+    hotas = []
     for cls in res.keys():
-      print(cls)
-      for k in evaluator.hota.float_array_fields:
-        print(k, res[cls][k].mean()*100)
-      for k in evaluator.hota.float_fields:
-        print(k, res[cls][k]*100)
-
+      #print(cls)
+      if res[cls]['HOTA'].mean() > 0:
+        aux = {}
+        aux['HOTA'] = res[cls]['HOTA'].mean()
+        aux['DetA'] = res[cls]['DetA'].mean()
+        aux['AssA'] = res[cls]['AssA'].mean()
+        aux['LocA'] = res[cls]['LocA'].mean()
+        hotas.append(aux)
+        """
+        for k in evaluator.hota.float_array_fields:
+          print(k, res[cls][k].mean()*100)
+        """
+        """
+        for k in evaluator.hota.float_fields:
+          print(k, res[cls][k]*100)
+        """
+    return hotas
   else:
     # compute detector stats
-    results = Inference.compute_stats(stats)
+    print(len(stats))
+    results = Inference.compute_stats(stats, names=model.names)
     print("Detector: mp:{}, mr:{}, map50:{}, map:{}".format(*results))
+    print(np.mean(inference_times))
 
   cv2.destroyAllWindows()
 
+import glob
 if __name__ == '__main__':
 
   opt = OPTS.val_args()
+  times = []
+  final_list = []
+  for path in glob.glob("/home/henistein/projects/ProjetoLicenciatura/datasets/MOT/*"):
+    opt.path = path
 
-  # dataset path
-  if not opt.detector:
-    dataset = MyDatasetMOT(
-        imgs_path=opt.path + '/images',
-        labels_path=opt.path + '/labels.txt',
-        imsize=opt.img_size
-    )
-  else:
-    dataset = MyDatasetDET(
-        imgs_path=opt.path + '/images',
-        labels_path=opt.path + '/annotations',
-        imsize=opt.img_size
-    )
+    # dataset path
+    if not opt.detector:
+      dataset = MyDatasetMOT(
+          imgs_path=opt.path + '/images',
+          labels_path=opt.path + '/labels.txt',
+          imsize=opt.img_size
+      )
+    else:
+      dataset = MyDatasetDET(
+          imgs_path=opt.path + '/images',
+          labels_path=opt.path + '/annotations',
+          imsize=opt.img_size
+      )
 
-  # model
-  weights = 'weights/' + opt.model
+    # model
+    weights = 'weights/' + opt.model
 
-  print(f"Running {opt.model}")
-  if opt.model.startswith('yolo'):
-    # load yolo model
-    model = torch.load(weights)['model'].float()
-    model.to(torch.device('cuda')).eval()
-  else:
-    from maskrcnn_benchmark.config import cfg
-    from utils.predictor import COCODemo
-    # load fasterrcnn model
-    config_file = "configs/fasterrcnn.yaml"
-    cfg.merge_from_file(config_file)
-    cfg.merge_from_list(["MODEL.WEIGHT", weights])
-    model = COCODemo(
-      cfg,
-      min_image_size=800,
-      confidence_threshold=0.5
-    )
-    model.names = ['pedestrian', 'people', 'bicycle', 'car', 'van', 'truck', 'tricycle', 'awning-tricycle', 'bus', 'motor']
+    print(f"Running {opt.model}")
+    if opt.model.startswith('yolo'):
+      # load yolo model
+      model = torch.load(weights)['model'].float()
+      model.to(torch.device('cuda')).eval()
+    else:
+      from maskrcnn_benchmark.config import cfg
+      from utils.predictor import COCODemo
+      # load fasterrcnn model
+      config_file = "configs/fasterrcnn.yaml"
+      cfg.merge_from_file(config_file)
+      cfg.merge_from_list(["MODEL.WEIGHT", weights])
+      model = COCODemo(
+        cfg,
+        min_image_size=opt.img_size,
+        #min_image_size=800,
+        confidence_threshold=0.7,
+      )
+      model.names = ['pedestrian', 'people', 'bicycle', 'car', 'van', 'truck', 'tricycle', 'awning-tricycle', 'bus', 'motor']
 
-  run(dataset, model, opt)
+    start = time.time()
+    res = run(dataset, model, opt)
+    times.append((time.time() - start)/len(dataset))
+
+    #print(res)
+    final = {}
+    for k in ['HOTA', 'DetA', 'AssA', 'LocA']:
+      final[k] = np.mean([r[k] for r in res])*100
+    final_list.append(final)
+
+  
+  results = {}
+  for k in ['HOTA', 'DetA', 'AssA', 'LocA']:
+    results[k] = np.mean([r[k] for r in final_list])
+  print(results)
+  print(np.mean(times))

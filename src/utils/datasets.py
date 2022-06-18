@@ -15,7 +15,13 @@ class MyDataset(Dataset):
     self.images = glob.glob(imgs_path + "/*")
     self.labels = np.loadtxt(labels_path, delimiter=',') if not DET else glob.glob(labels_path+"/*")
     if not DET:
-      assert len(self.images) == self.labels[-1, ..., 0], "Number of labels and images differ"
+      if len(self.images) != len(set(self.labels[:, 0])):
+        # remove the ones that are the most
+        rem = len(self.images)
+        offset = np.where(self.labels[:, 0] == rem)
+        if len(offset[0]) > 0:
+          self.labels = self.labels[:offset[0][0]+1]
+          assert len(self.images) == len(set(self.labels[:, 0])), "Images and labels don't match"
     else:
       assert len(self.images) == len(self.labels), "Number of labels and images differ"
     self.names = [Path(f).stem for f in self.images]
@@ -56,7 +62,10 @@ class MyDatasetMOT(MyDataset):
     shapes = (h0, w0), ((h/h0, w/w0), pad)
 
     # load labels
-    label_id = int(name.split('_')[1]) + 1
+    if '_' in name:
+      label_id = int(name.split('_')[1]) + 1
+    else:
+      label_id = int(name) + 1
     labels = self.labels[self.labels[:, 0] == label_id]
 
     # ids [x y w h] cls

@@ -1,4 +1,5 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
+from turtle import forward
 import cv2
 import torch
 from torchvision import transforms as T
@@ -10,6 +11,16 @@ from maskrcnn_benchmark.modeling.roi_heads.mask_head.inference import Masker
 from maskrcnn_benchmark import layers as L
 from maskrcnn_benchmark.utils import cv2_util
 
+
+from PIL import Image
+class ResizeThumbnail(torch.nn.Module):
+    def __init__(self, size):
+        super(ResizeThumbnail, self).__init__()
+        self.size = (size,size)
+
+    def forward(self, x):
+        x.thumbnail(self.size, Image.ANTIALIAS)
+        return x
 
 class COCODemo(object):
     # COCO categories for pretty print
@@ -236,7 +247,8 @@ class COCODemo(object):
         transform = T.Compose(
             [
                 T.ToPILImage(),
-                T.Resize(self.min_image_size),
+                ResizeThumbnail(self.min_image_size),
+                #T.Resize(self.min_image_size),
                 T.ToTensor(),
                 to_bgr_transform,
                 normalize_transform,
