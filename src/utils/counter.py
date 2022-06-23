@@ -4,13 +4,15 @@ import cv2
 import numpy as np
 
 class Counter:
-  def __init__(self):
+  def __init__(self, classes):
     self.img = None
-    self.line = {"big":None, "small":np.array([[620, 200], [700, 287]], np.int32)}
+    self.line = {"big":None, "small":np.array([[648, 180], [720, 233]], np.int32)}
     self.box = {"big":None, "small":np.array([[675, 174], [721, 215]], np.int32)}
     self.idpoints = {}
     self.counter = 0
     self.avg_speed = []
+    self.stats = {classes.index(k):0 for k in classes}
+    self.classes = classes
   
   def draw_line(self):
     cv2.polylines(self.img, [self.line["small"]], False, (0,255,0))
@@ -42,7 +44,7 @@ class Counter:
     return ccw(A,C,D) != ccw(B,C,D) and ccw(A,B,C) != ccw(A,B,D)
 
   
-  def count(self, curr_centers):
+  def count(self, curr_centers, id_clss):
     self.draw_line()
     self.draw_box()
     for id in curr_centers:
@@ -58,9 +60,17 @@ class Counter:
       # check if line and self.line intersect
       if self.check_intersection(line, self.line["big"]):
         self.counter += 1
+        #print(id)
+        #print(id_clss)
+        self.stats[float(id_clss[float(id)])] += 1
         del self.idpoints[id]
-    print(self.counter)
-  
+
+  def show_stats(self):
+    print(f"Count: {self.counter}")
+    for n in self.classes:
+      print(f"{n}: {self.stats[self.classes.index(n)]}")
+
+    
   def get_average_speed_in_box(self, curr_centers, speeds):
     ids_inside = self.get_ids_inside_box(curr_centers)
     speeds_inside = []

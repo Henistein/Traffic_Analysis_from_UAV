@@ -1,5 +1,5 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
-from turtle import forward
+#from turtle import forward
 import cv2
 import torch
 from torchvision import transforms as T

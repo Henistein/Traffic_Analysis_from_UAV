@@ -92,7 +92,7 @@ def run(model, opt):
     geo = GeoRef(mapp_file)
     drone_map = MapDrone(logs_file,geo,video.cap.get(cv2.CAP_PROP_FRAME_COUNT))
     # counter
-    counter = Counter()
+    counter = Counter(model.names)
     counter.update_img(geo.image, (geo.image.shape[1]/1280, geo.image.shape[0]/720))
 
   frame_id = -1
@@ -173,9 +173,9 @@ def run(model, opt):
         speed_handler.update_speeds(scaled_points["geo"], last_scaled_pts["geo"])
 
         # count cars
-        counter.update_img(map_img, (drone_map.geo.image.shape[1]/1280, drone_map.geo.image.shape[0]/720))
-        counter.count(scaled_points["px"])
-      
+        #counter.update_img(map_img, (drone_map.geo.image.shape[1]/1280, drone_map.geo.image.shape[0]/720))
+        #counter.count(scaled_points["px"], dict(zip(detections.current[:, 1], detections.current[:, 7])))
+        #counter.show_stats()
       # update last_scaled_pts
       last_scaled_pts = deepcopy(scaled_points)
 

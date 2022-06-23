@@ -161,25 +161,12 @@ def run(dataset, model, opt):
       classes_to_eval=model.names
     )
     res = evaluator.run_hota()
-    hotas = []
     for cls in res.keys():
       #print(cls)
-      if res[cls]['HOTA'].mean() > 0:
-        aux = {}
-        aux['HOTA'] = res[cls]['HOTA'].mean()
-        aux['DetA'] = res[cls]['DetA'].mean()
-        aux['AssA'] = res[cls]['AssA'].mean()
-        aux['LocA'] = res[cls]['LocA'].mean()
-        hotas.append(aux)
-        """
         for k in evaluator.hota.float_array_fields:
           print(k, res[cls][k].mean()*100)
-        """
-        """
         for k in evaluator.hota.float_fields:
           print(k, res[cls][k]*100)
-        """
-    return hotas
   else:
     # compute detector stats
     print(len(stats))
@@ -193,61 +180,43 @@ import glob
 if __name__ == '__main__':
 
   opt = OPTS.val_args()
-  times = []
-  final_list = []
-  for path in glob.glob("/home/henistein/projects/ProjetoLicenciatura/datasets/MOT/*"):
-    opt.path = path
 
-    # dataset path
-    if not opt.detector:
-      dataset = MyDatasetMOT(
-          imgs_path=opt.path + '/images',
-          labels_path=opt.path + '/labels.txt',
-          imsize=opt.img_size
-      )
-    else:
-      dataset = MyDatasetDET(
-          imgs_path=opt.path + '/images',
-          labels_path=opt.path + '/annotations',
-          imsize=opt.img_size
-      )
+  # dataset path
+  if not opt.detector:
+    dataset = MyDatasetMOT(
+        imgs_path=opt.path + '/images',
+        labels_path=opt.path + '/labels.txt',
+        imsize=opt.img_size
+    )
+  else:
+    dataset = MyDatasetDET(
+        imgs_path=opt.path + '/images',
+        labels_path=opt.path + '/annotations',
+        imsize=opt.img_size
+    )
 
-    # model
-    weights = 'weights/' + opt.model
+  # model
+  weights = 'weights/' + opt.model
 
-    print(f"Running {opt.model}")
-    if opt.model.startswith('yolo'):
-      # load yolo model
-      model = torch.load(weights)['model'].float()
-      model.to(torch.device('cuda')).eval()
-    else:
-      from maskrcnn_benchmark.config import cfg
-      from utils.predictor import COCODemo
-      # load fasterrcnn model
-      config_file = "configs/fasterrcnn.yaml"
-      cfg.merge_from_file(config_file)
-      cfg.merge_from_list(["MODEL.WEIGHT", weights])
-      model = COCODemo(
-        cfg,
-        min_image_size=opt.img_size,
-        #min_image_size=800,
-        confidence_threshold=0.7,
-      )
-      model.names = ['pedestrian', 'people', 'bicycle', 'car', 'van', 'truck', 'tricycle', 'awning-tricycle', 'bus', 'motor']
+  print(f"Running {opt.model}")
+  if opt.model.startswith('yolo'):
+    # load yolo model
+    model = torch.load(weights)['model'].float()
+    model.to(torch.device('cuda')).eval()
+  else:
+    from maskrcnn_benchmark.config import cfg
+    from utils.predictor import COCODemo
+    # load fasterrcnn model
+    config_file = "configs/fasterrcnn.yaml"
+    cfg.merge_from_file(config_file)
+    cfg.merge_from_list(["MODEL.WEIGHT", weights])
+    model = COCODemo(
+      cfg,
+      min_image_size=opt.img_size,
+      #min_image_size=800,
+      confidence_threshold=0.7,
+    )
+    model.names = ['pedestrian', 'people', 'bicycle', 'car', 'van', 'truck', 'tricycle', 'awning-tricycle', 'bus', 'motor']
 
-    start = time.time()
-    res = run(dataset, model, opt)
-    times.append((time.time() - start)/len(dataset))
+  res = run(dataset, model, opt)
 
-    #print(res)
-    final = {}
-    for k in ['HOTA', 'DetA', 'AssA', 'LocA']:
-      final[k] = np.mean([r[k] for r in res])*100
-    final_list.append(final)
-
-  
-  results = {}
-  for k in ['HOTA', 'DetA', 'AssA', 'LocA']:
-    results[k] = np.mean([r[k] for r in final_list])
-  print(results)
-  print(np.mean(times))
