@@ -173,9 +173,9 @@ def run(model, opt):
         speed_handler.update_speeds(scaled_points["geo"], last_scaled_pts["geo"])
 
         # count cars
-        #counter.update_img(map_img, (drone_map.geo.image.shape[1]/1280, drone_map.geo.image.shape[0]/720))
-        #counter.count(scaled_points["px"], dict(zip(detections.current[:, 1], detections.current[:, 7])))
-        #counter.show_stats()
+        counter.update_img(map_img, (drone_map.geo.image.shape[1]/1280, drone_map.geo.image.shape[0]/720))
+        counter.count(scaled_points["px"], dict(zip(detections.current[:, 1], detections.current[:, 7])))
+        counter.show_stats()
       # update last_scaled_pts
       last_scaled_pts = deepcopy(scaled_points)
 

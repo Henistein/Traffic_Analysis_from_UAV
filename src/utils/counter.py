@@ -60,8 +60,6 @@ class Counter:
       # check if line and self.line intersect
       if self.check_intersection(line, self.line["big"]):
         self.counter += 1
-        #print(id)
-        #print(id_clss)
         self.stats[float(id_clss[float(id)])] += 1
         del self.idpoints[id]
 

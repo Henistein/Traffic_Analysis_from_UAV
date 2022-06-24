@@ -1,6 +1,0 @@
-https://docs.ultralytics.com/ (history of yolo)
-
-- https://github.com/ultralytics/yolov5 (YOLOv5)
-- https://github.com/cv516Buaa/tph-yolov5 (TPH-YOLOv5)
-
-ler bem isto: sensors.pdf (faz uma comparacao de varios yolos e algoritmos de detecao de objetos)
